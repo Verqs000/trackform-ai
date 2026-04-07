@@ -258,14 +258,14 @@ if uploaded_file is not None:
             confidence = classification['confidence']
 
             # DEBUG — remove after fixing classifier
-            st.write("FEATURES:", classification['features'])
-            st.write("SCORES:", classification['all_scores'])
+            
 
             status.markdown('<div style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">Step 3 / 3 — Judging technique...</div>', unsafe_allow_html=True)
             progress_bar.progress(80)
 
             judge = TechniqueJudge(event_type)
             analysis = judge.analyze(pose_data)
+            analysis['overall_score'] = max(1, min(100, round(float(analysis['overall_score']) * 100)))
 
             increment_usage(user_id)
             save_analysis(
