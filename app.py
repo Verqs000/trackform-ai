@@ -200,6 +200,29 @@ if not can_go:
     """, unsafe_allow_html=True)
     st.stop()
 
+# ── EVENT SELECTOR ────────────────────────────────────────────────────────────
+
+# Maps display label → internal event_type key used by TechniqueJudge
+EVENT_OPTIONS = {
+    "⚡  Sprint / Block Start": "sprint",
+    "🏋️  Shot Put":             "shot_put",
+    "💿  Discus":               "discus",
+    "🏹  Javelin":              "javelin",
+}
+
+st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.6rem;">SELECT YOUR EVENT</div>', unsafe_allow_html=True)
+selected_label = st.selectbox(
+    label="event_selector",
+    options=list(EVENT_OPTIONS.keys()),
+    index=0,
+    label_visibility="collapsed",
+)
+selected_event = EVENT_OPTIONS[selected_label]
+
+st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
+
+# ── FILE UPLOADER ─────────────────────────────────────────────────────────────
+
 uploaded_file = st.file_uploader(
     "Drop your video here — side view works best",
     type=['mp4', 'mov', 'avi', 'mkv', 'webm'],
@@ -249,16 +272,18 @@ if uploaded_file is not None:
                 st.error("Couldn't detect a body clearly. Try better lighting or a cleaner side view.")
                 st.stop()
 
-            status.markdown('<div style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">Step 2 / 3 — Identifying event...</div>', unsafe_allow_html=True)
+            status.markdown('<div style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">Step 2 / 3 — Verifying pose data...</div>', unsafe_allow_html=True)
             progress_bar.progress(50)
 
+            # Use the user-selected event directly — no classifier guessing
+            event_type = selected_event
+
+            # Still run classifier in background for confidence score display only
             classifier = EventClassifier()
             classification = classifier.classify(pose_data)
-            event_type = classification['event']
-            confidence = classification['confidence']
-
-            # DEBUG — remove after fixing classifier
-            
+            # Override classifier's event pick with user selection
+            classification['event'] = event_type
+            confidence = classification['all_scores'].get(event_type, 0.8)
 
             status.markdown('<div style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">Step 3 / 3 — Judging technique...</div>', unsafe_allow_html=True)
             progress_bar.progress(80)
@@ -292,15 +317,15 @@ if uploaded_file is not None:
                 """, unsafe_allow_html=True)
 
             with col_event:
-                bar_width = int(confidence * 100)
+                bar_width = min(100, max(0, int(confidence * 100)))
                 st.markdown(f"""
                 <div class="score-card">
                     <div class="event-badge">{event_type.replace('_',' ').upper()}</div>
-                    <div class="score-label">Detected Event</div>
+                    <div class="score-label">Selected Event</div>
                     <div class="confidence-bar-wrap">
                         <div class="confidence-bar-fill" style="width:{bar_width}%;"></div>
                     </div>
-                    <div style="font-size:0.75rem;color:#444;margin-top:0.4rem;">{bar_width}% confidence</div>
+                    <div style="font-size:0.75rem;color:#444;margin-top:0.4rem;">{bar_width}% pose match</div>
                 </div>
                 """, unsafe_allow_html=True)
 
