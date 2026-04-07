@@ -202,7 +202,6 @@ if not can_go:
 
 # ── EVENT SELECTOR ────────────────────────────────────────────────────────────
 
-# Maps display label → internal event_type key used by TechniqueJudge
 EVENT_OPTIONS = {
     "⚡  Sprint / Block Start": "sprint",
     "🏋️  Shot Put":             "shot_put",
@@ -275,13 +274,12 @@ if uploaded_file is not None:
             status.markdown('<div style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">Step 2 / 3 — Verifying pose data...</div>', unsafe_allow_html=True)
             progress_bar.progress(50)
 
-            # Use the user-selected event directly — no classifier guessing
+            # Use user-selected event directly
             event_type = selected_event
 
-            # Still run classifier in background for confidence score display only
+            # Run classifier only for the confidence/pose match display
             classifier = EventClassifier()
             classification = classifier.classify(pose_data)
-            # Override classifier's event pick with user selection
             classification['event'] = event_type
             confidence = classification['all_scores'].get(event_type, 0.8)
 
@@ -290,7 +288,9 @@ if uploaded_file is not None:
 
             judge = TechniqueJudge(event_type)
             analysis = judge.analyze(pose_data)
-            analysis['overall_score'] = max(1, min(100, round(float(analysis['overall_score']) * 100)))
+
+            # Judge already returns 1-100, just clamp cleanly
+            analysis['overall_score'] = max(1, min(100, round(float(analysis['overall_score']))))
 
             increment_usage(user_id)
             save_analysis(
