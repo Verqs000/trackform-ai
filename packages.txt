@@ -1,1 +1,11 @@
+<<<<<<< HEAD
 libgl1-mesa-glx 
+=======
+libgl1-mesa-glx
+libglib2.0-0
+libsm6
+libxext6
+libxrender-dev
+libgomp1
+libgl1
+>>>>>>> 271cc8cda11e2a72530b8c2cb84144e2534382d7
