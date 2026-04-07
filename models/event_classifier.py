@@ -105,48 +105,54 @@ class EventClassifier:
     # avg_hip_speed:    Sprint 0.003-0.021 | Jav 0.003-0.006 | Disc 0.0007-0.003 | Shot 0.003-0.005
     # end_hip_height:   Sprint 0.29-0.76 | Jav 0.40-0.92 | Disc 0.38-0.47 | Shot 0.54-0.56
     #
-    # MOST RELIABLE: avg_torso_angle (sprint clearly highest at 40-45)
-    # 2ND: bounciness (sprint + shot overlap 0.012-0.016, but sprint goes higher)
-    # 3RD: avg_hip_speed (sprint can go much higher than throws)
+    # MOST RELIABLE: avg_hip_speed — sprint is only event that goes >0.008 consistently
+    # 2ND: avg_torso_angle (sprint clearly highest at 40-45, but NOT sufficient alone)
+    # 3RD: bounciness separates discus (lowest) from rest
     # ─────────────────────────────────────────────────────────────────────────
 
     def _score_sprint(self, f):
         """
-        Sprint signature: HIGH avg_torso_angle (40-45) + bounciness varies
-        but avg_hip_speed can be very high (0.021).
-        Most reliable: avg_torso_angle > 35 is a very strong sprint signal.
+        Sprint signature: HIGH avg_hip_speed (can reach 0.021) + HIGH avg_torso_angle (40-45)
+        + bounciness varies widely.
+
+        HARD GATE: avg_hip_speed < 0.005 is physically impossible for a sprint.
+        Torso angle alone is NOT enough — a forward-leaning shot put has similar angle.
         """
+        # ── HARD GATE ──────────────────────────────────────────────────────
+        # No sprint moves this slowly. Return near-zero immediately.
+        if f['avg_hip_speed'] < 0.005:
+            return 0.05
+
         score = 0.0
 
-        # #1 BEST: avg_torso_angle — sprints lean forward, stays high throughout
+        # #1: avg_torso_angle — sprints lean forward, stays high throughout
         # Sprint: 40-45. All throws: 10-32. Clear separation.
         if f['avg_torso_angle'] > 38:
-            score += 0.50
+            score += 0.45
         elif f['avg_torso_angle'] > 30:
-            score += 0.30
+            score += 0.25
         elif f['avg_torso_angle'] > 22:
             score += 0.10
         else:
-            score -= 0.20  # very upright = throw
+            score -= 0.25  # very upright = throw
 
-        # #2: bounciness — sprint tends higher but overlaps with shot
+        # #2: hip speed — sprint is the only event where this gets high
+        if f['avg_hip_speed'] > 0.015:
+            score += 0.30
+        elif f['avg_hip_speed'] > 0.008:
+            score += 0.20
+        elif f['avg_hip_speed'] > 0.005:
+            score += 0.10
+
+        # #3: bounciness — sprint tends higher but overlaps with shot
         if f['bounciness'] > 0.025:
-            score += 0.25
+            score += 0.20
         elif f['bounciness'] > 0.015:
-            score += 0.15
+            score += 0.10
         elif f['bounciness'] > 0.008:
             score += 0.05
 
-        # #3: hip speed — sprint can be very fast
-        if f['avg_hip_speed'] > 0.015:
-            score += 0.20
-        elif f['avg_hip_speed'] > 0.007:
-            score += 0.10
-        elif f['avg_hip_speed'] > 0.003:
-            score += 0.05
-
-        # #4: end hip should go DOWN (sprint moves from crouch to upright)
-        # end_hip_height going very high (>0.70) suggests shot put not sprint
+        # #4: end hip very high suggests shot put not sprint
         if f['end_hip_height'] > 0.70:
             score -= 0.15
 
@@ -158,6 +164,11 @@ class EventClassifier:
         + moderate bounciness + NOT a slow throw.
         Hard to separate from discus/shot on torso alone — use arm extension.
         """
+        # ── SOFT GATE ──────────────────────────────────────────────────────
+        # Javelin has minimum movement — too fast = sprint, too slow = discus
+        if f['avg_hip_speed'] > 0.012:
+            return 0.05  # too fast, likely sprint
+
         score = 0.0
 
         # #1: upright torso but not as extreme as discus
@@ -169,7 +180,6 @@ class EventClassifier:
             score -= 0.30  # sprint not javelin
 
         # #2: arms extended throughout (carrying javelin)
-        # Use median which is more robust than single frame
         if f['start_arm_ext'] > 0.80 and f['end_arm_ext'] > 0.80:
             score += 0.30
         elif f['start_arm_ext'] > 0.70 or f['end_arm_ext'] > 0.70:
@@ -196,9 +206,12 @@ class EventClassifier:
     def _score_shot_put(self, f):
         """
         Shot put signature: UPRIGHT torso (15-32) + high end_hip_height (0.54-0.56)
-        + large negative torso change in original video (leaning then releasing).
-        Bounciness 0.008-0.016 overlaps with sprint but avg_torso separates them.
+        + slow hip speed + large torso change (wind-up to release).
         """
+        # ── SOFT GATE ──────────────────────────────────────────────────────
+        if f['avg_hip_speed'] > 0.012:
+            return 0.05  # too fast, likely sprint
+
         score = 0.0
         torso_change = f['end_torso_angle'] - f['start_torso_angle']
 
@@ -210,18 +223,17 @@ class EventClassifier:
 
         # #2: end hip height elevated (squatting then rising for release)
         if f['end_hip_height'] > 0.50:
-            score += 0.25
+            score += 0.30
         elif f['end_hip_height'] > 0.40:
-            score += 0.10
+            score += 0.15
 
         # #3: slow hip speed
         if f['avg_hip_speed'] < 0.006:
             score += 0.20
         elif f['avg_hip_speed'] > 0.012:
-            score -= 0.15
+            score -= 0.20
 
-        # #4: torso change (can be negative OR positive depending on filming angle)
-        # Shot put has large start_torso_angle in some videos
+        # #4: torso change — shot put has large wind-up
         if f['start_torso_angle'] > 40 or abs(torso_change) > 25:
             score += 0.15
 
@@ -239,6 +251,10 @@ class EventClassifier:
         + very slow hip speed (0.0007-0.003) + small torso change.
         Most distinctive: combination of very low bounciness AND very upright torso.
         """
+        # ── SOFT GATE ──────────────────────────────────────────────────────
+        if f['avg_hip_speed'] > 0.012:
+            return 0.05  # too fast, likely sprint
+
         score = 0.0
         torso_change = f['end_torso_angle'] - f['start_torso_angle']
 
@@ -250,7 +266,7 @@ class EventClassifier:
         elif f['avg_torso_angle'] > 35:
             score -= 0.25  # sprint
 
-        # #2: lowest bounciness
+        # #2: lowest bounciness of all events
         if f['bounciness'] < 0.006:
             score += 0.30
         elif f['bounciness'] < 0.012:
