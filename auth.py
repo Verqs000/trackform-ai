@@ -1,7 +1,7 @@
 """
 Auth system using Supabase REST API
 Uses requests only - no supabase package needed
-Matches existing tables: profiles, usage, analyses, teams, team_members
+Matches existing tables: profiles, usage, analyses, teams, team_members, team_invites
 """
 
 import requests
@@ -36,15 +36,12 @@ class SimpleUser:
 
 # ── AUTH ─────────────────────────────────────────────────────────────────────
 
-def  sign_up(email: str, password: str) -> dict:
+def sign_up(email: str, password: str) -> dict:
     url = f"{SUPABASE_URL}/auth/v1/signup"
     try:
         res = requests.post(url, headers=ANON_HEADERS, json={"email": email, "password": password})
         data = res.json()
-        
-        # Success if we got an id back (user object returned directly)
         user_id = data.get("id") or (data.get("user") or {}).get("id")
-        
         if res.status_code in [200, 201] and user_id:
             _ensure_profile(user_id, email)
             return {"success": True}
@@ -54,18 +51,15 @@ def  sign_up(email: str, password: str) -> dict:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+
 def sign_in(email: str, password: str) -> dict:
     url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
     try:
         res = requests.post(url, headers=ANON_HEADERS, json={"email": email, "password": password})
         data = res.json()
-        print(f"Sign in response: {res.status_code} - {data}")
-        
-        # User can be at top level or nested
         user_data = data.get("user") or data
         user_id = user_data.get("id")
         user_email = user_data.get("email")
-        
         if res.status_code == 200 and user_id:
             user = SimpleUser(user_id, user_email)
             _ensure_profile(user_id, user_email)
@@ -128,6 +122,33 @@ def upgrade_tier(user_id: str, new_tier: str) -> bool:
         return res.status_code in [200, 204]
     except:
         return False
+
+
+# ── STRIPE ────────────────────────────────────────────────────────────────────
+
+def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: str) -> dict:
+    """Create a Stripe checkout session and return the URL."""
+    try:
+        import stripe
+        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            customer_email=user_email,
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=f"https://trackform-ai.streamlit.app?payment=success&tier={tier}&uid={user_id}",
+            cancel_url="https://trackform-ai.streamlit.app?payment=cancelled",
+            metadata={"user_id": user_id, "tier": tier}
+        )
+        return {"success": True, "url": session.url}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def handle_stripe_success(user_id: str, tier: str):
+    """Called when user returns from successful Stripe payment."""
+    upgrade_tier(user_id, tier)
 
 
 # ── USAGE ─────────────────────────────────────────────────────────────────────
@@ -237,6 +258,38 @@ def create_team(coach_id: str, team_name: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
+def delete_team(team_id: str, coach_id: str) -> dict:
+    try:
+        # Verify ownership first
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/teams?id=eq.{team_id}&coach_id=eq.{coach_id}",
+            headers=ADMIN_HEADERS
+        )
+        if res.status_code != 200 or not res.json():
+            return {"success": False, "error": "Team not found or not authorized."}
+
+        # Delete members first
+        requests.delete(
+            f"{SUPABASE_URL}/rest/v1/team_members?team_id=eq.{team_id}",
+            headers=ADMIN_HEADERS
+        )
+        # Delete invites
+        requests.delete(
+            f"{SUPABASE_URL}/rest/v1/team_invites?team_id=eq.{team_id}",
+            headers=ADMIN_HEADERS
+        )
+        # Delete team
+        del_res = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/teams?id=eq.{team_id}",
+            headers=ADMIN_HEADERS
+        )
+        if del_res.status_code in [200, 204]:
+            return {"success": True}
+        return {"success": False, "error": del_res.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def get_my_teams(coach_id: str) -> list:
     try:
         res = requests.get(
@@ -250,32 +303,15 @@ def get_my_teams(coach_id: str) -> list:
     return []
 
 
-def add_athlete_to_team(team_id: str, athlete_email: str) -> dict:
+def remove_athlete_from_team(team_id: str, athlete_id: str) -> dict:
     try:
-        res = requests.get(
-            f"{SUPABASE_URL}/rest/v1/profiles?email=eq.{athlete_email}&select=id,email",
-            headers=ADMIN_HEADERS
-        )
-        if res.status_code != 200 or not res.json():
-            return {"success": False, "error": "No account found with that email. They need to sign up first."}
-
-        athlete_id = res.json()[0]["id"]
-
-        check = requests.get(
+        res = requests.delete(
             f"{SUPABASE_URL}/rest/v1/team_members?team_id=eq.{team_id}&athlete_id=eq.{athlete_id}",
             headers=ADMIN_HEADERS
         )
-        if check.status_code == 200 and check.json():
-            return {"success": False, "error": "Athlete is already on this team."}
-
-        add = requests.post(
-            f"{SUPABASE_URL}/rest/v1/team_members",
-            headers=ADMIN_HEADERS,
-            json={"team_id": team_id, "athlete_id": athlete_id}
-        )
-        if add.status_code in [200, 201]:
+        if res.status_code in [200, 204]:
             return {"success": True}
-        return {"success": False, "error": add.text}
+        return {"success": False, "error": res.text}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -322,3 +358,148 @@ def get_team_analyses(team_id: str) -> list:
     except Exception as e:
         print(f"Get team analyses error: {e}")
     return []
+
+
+# ── TEAM INVITES ──────────────────────────────────────────────────────────────
+
+def invite_athlete_to_team(team_id: str, coach_id: str, athlete_email: str) -> dict:
+    """Send an invite — creates a pending team_invites row instead of directly adding."""
+    try:
+        # Look up athlete by email
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/profiles?email=eq.{athlete_email}&select=id,email",
+            headers=ADMIN_HEADERS
+        )
+        if res.status_code != 200 or not res.json():
+            return {"success": False, "error": "No account found with that email. They need to sign up first."}
+
+        athlete_id = res.json()[0]["id"]
+
+        # Check already a member
+        check = requests.get(
+            f"{SUPABASE_URL}/rest/v1/team_members?team_id=eq.{team_id}&athlete_id=eq.{athlete_id}",
+            headers=ADMIN_HEADERS
+        )
+        if check.status_code == 200 and check.json():
+            return {"success": False, "error": "Athlete is already on this team."}
+
+        # Check already has pending invite
+        invite_check = requests.get(
+            f"{SUPABASE_URL}/rest/v1/team_invites?team_id=eq.{team_id}&athlete_id=eq.{athlete_id}&status=eq.pending",
+            headers=ADMIN_HEADERS
+        )
+        if invite_check.status_code == 200 and invite_check.json():
+            return {"success": False, "error": "Invite already sent and pending."}
+
+        # Create invite
+        invite_res = requests.post(
+            f"{SUPABASE_URL}/rest/v1/team_invites",
+            headers=ADMIN_HEADERS,
+            json={
+                "team_id": team_id,
+                "athlete_id": athlete_id,
+                "coach_id": coach_id,
+                "status": "pending"
+            }
+        )
+        if invite_res.status_code in [200, 201]:
+            return {"success": True}
+        return {"success": False, "error": invite_res.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def get_pending_invites(athlete_id: str) -> list:
+    """Get all pending invites for an athlete with team + coach info."""
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/team_invites?athlete_id=eq.{athlete_id}&status=eq.pending",
+            headers=ADMIN_HEADERS
+        )
+        if res.status_code == 200:
+            invites = res.json()
+            enriched = []
+            for inv in invites:
+                # Get team name
+                team_res = requests.get(
+                    f"{SUPABASE_URL}/rest/v1/teams?id=eq.{inv['team_id']}&select=name",
+                    headers=ADMIN_HEADERS
+                )
+                team_name = team_res.json()[0]["name"] if team_res.status_code == 200 and team_res.json() else "Unknown Team"
+
+                # Get coach email
+                coach_res = requests.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{inv['coach_id']}&select=email",
+                    headers=ADMIN_HEADERS
+                )
+                coach_email = coach_res.json()[0]["email"] if coach_res.status_code == 200 and coach_res.json() else "Unknown Coach"
+
+                inv["team_name"] = team_name
+                inv["coach_email"] = coach_email
+                enriched.append(inv)
+            return enriched
+    except Exception as e:
+        print(f"Get invites error: {e}")
+    return []
+
+
+def respond_to_invite(invite_id: str, athlete_id: str, accept: bool) -> dict:
+    """Accept or decline an invite. If accepted, adds to team_members."""
+    try:
+        # Get invite to verify ownership
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/team_invites?id=eq.{invite_id}&athlete_id=eq.{athlete_id}",
+            headers=ADMIN_HEADERS
+        )
+        if res.status_code != 200 or not res.json():
+            return {"success": False, "error": "Invite not found."}
+
+        invite = res.json()[0]
+        new_status = "accepted" if accept else "declined"
+
+        # Update invite status
+        requests.patch(
+            f"{SUPABASE_URL}/rest/v1/team_invites?id=eq.{invite_id}",
+            headers=ADMIN_HEADERS,
+            json={"status": new_status}
+        )
+
+        # If accepted, add to team_members
+        if accept:
+            requests.post(
+                f"{SUPABASE_URL}/rest/v1/team_members",
+                headers=ADMIN_HEADERS,
+                json={"team_id": invite["team_id"], "athlete_id": athlete_id}
+            )
+
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def add_athlete_to_team(team_id: str, athlete_email: str) -> dict:
+    """Legacy direct-add kept for backwards compat — now just calls invite."""
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/profiles?email=eq.{athlete_email}&select=id",
+            headers=ADMIN_HEADERS
+        )
+        if res.status_code != 200 or not res.json():
+            return {"success": False, "error": "No account found with that email."}
+        athlete_id = res.json()[0]["id"]
+        check = requests.get(
+            f"{SUPABASE_URL}/rest/v1/team_members?team_id=eq.{team_id}&athlete_id=eq.{athlete_id}",
+            headers=ADMIN_HEADERS
+        )
+        if check.status_code == 200 and check.json():
+            return {"success": False, "error": "Athlete is already on this team."}
+        add = requests.post(
+            f"{SUPABASE_URL}/rest/v1/team_members",
+            headers=ADMIN_HEADERS,
+            json={"team_id": team_id, "athlete_id": athlete_id}
+        )
+        if add.status_code in [200, 201]:
+            return {"success": True}
+        return {"success": False, "error": add.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

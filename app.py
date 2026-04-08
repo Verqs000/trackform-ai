@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models.pose_extractor import PoseExtractor
 from models.event_classifier import EventClassifier
 from models.technique_judge import TechniqueJudge
-from auth import can_analyze, increment_usage, save_analysis, get_tier, get_usage_this_week, sign_out
+from auth import can_analyze, increment_usage, save_analysis, get_tier, get_usage_this_week, sign_out, handle_stripe_success, upgrade_tier
 from login_page import show_login_page
 from coach_page import show_coach_page
 from progress_page import show_progress_page
@@ -71,6 +71,25 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 [data-testid="stDownloadButton"] > button:hover { border-color: #ff3b3b !important; color: #fff !important; }
 .stProgress > div > div { background: #ff3b3b !important; }
 [data-baseweb="select"] { background: #111 !important; }
+
+/* Sidebar toggle button — small, top-left, always visible */
+.sidebar-toggle-btn > button {
+    background: #1a1a1a !important;
+    border: 1px solid #2a2a2a !important;
+    border-radius: 6px !important;
+    font-size: 1.1rem !important;
+    padding: 0.3rem 0.7rem !important;
+    width: auto !important;
+    min-width: 0 !important;
+    letter-spacing: 0 !important;
+    font-family: 'DM Sans', sans-serif !important;
+    color: #888 !important;
+}
+.sidebar-toggle-btn > button:hover {
+    border-color: #ff3b3b !important;
+    color: #fff !important;
+    background: #111 !important;
+}
 </style>
 """
 
@@ -82,12 +101,45 @@ if "user" not in st.session_state:
     show_login_page()
     st.stop()
 
+# ── HANDLE STRIPE REDIRECT ────────────────────────────────────────────────────
+params = st.query_params
+if params.get("payment") == "success":
+    uid  = params.get("uid", "")
+    tier_param = params.get("tier", "")
+    if uid and tier_param in ["pro", "coach"]:
+        handle_stripe_success(uid, tier_param)
+        st.query_params.clear()
+        st.success(f"🎉 Payment confirmed! Your account is now {tier_param.upper()}.")
+
 user = st.session_state["user"]
 user_id = user.id
 tier = get_tier(user_id)
 used_this_week = get_usage_this_week(user_id)
 can_go, remaining = can_analyze(user_id)
 FREE_LIMIT = 5
+
+# ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
+
+if "sidebar_open" not in st.session_state:
+    st.session_state["sidebar_open"] = True
+
+# Toggle button sits in the top-left of the main content area
+toggle_col, _ = st.columns([1, 20])
+with toggle_col:
+    st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
+    icon = "✕" if st.session_state["sidebar_open"] else "☰"
+    if st.button(icon, key="sidebar_toggle"):
+        st.session_state["sidebar_open"] = not st.session_state["sidebar_open"]
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Collapse/expand sidebar via CSS injection
+if not st.session_state["sidebar_open"]:
+    st.markdown("""
+    <style>
+    [data-testid="stSidebar"] { display: none !important; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 
@@ -115,8 +167,8 @@ with st.sidebar:
         ("🎯", "Coach Dashboard", "coach"),
     ]
 
-    for icon, label, key in pages:
-        if st.button(f"{icon}  {label}", key=f"nav_{key}"):
+    for icon_nav, label, key in pages:
+        if st.button(f"{icon_nav}  {label}", key=f"nav_{key}"):
             st.session_state["page"] = key
             st.rerun()
 
@@ -150,8 +202,8 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
     st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.6rem;">SUPPORTED EVENTS</div>', unsafe_allow_html=True)
-    for icon, name in [("⚡","Sprint blocks"),("🏋️","Shot put"),("💿","Discus"),("🏹","Javelin")]:
-        st.markdown(f'<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid #1a1a1a;font-size:0.85rem;color:#666;"><span style="width:6px;height:6px;border-radius:50%;background:#ff3b3b;display:inline-block;flex-shrink:0;"></span>{icon} {name}</div>', unsafe_allow_html=True)
+    for ico, name in [("⚡","Sprint blocks"),("🏋️","Shot put"),("💿","Discus"),("🏹","Javelin")]:
+        st.markdown(f'<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid #1a1a1a;font-size:0.85rem;color:#666;"><span style="width:6px;height:6px;border-radius:50%;background:#ff3b3b;display:inline-block;flex-shrink:0;"></span>{ico} {name}</div>', unsafe_allow_html=True)
 
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
     st.markdown(f'<div style="font-size:0.75rem;color:#333;margin-bottom:0.4rem;">Signed in as<br><span style="color:#555;">{user.email}</span></div>', unsafe_allow_html=True)
@@ -274,10 +326,8 @@ if uploaded_file is not None:
             status.markdown('<div style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">Step 2 / 3 — Verifying pose data...</div>', unsafe_allow_html=True)
             progress_bar.progress(50)
 
-            # Use user-selected event directly
             event_type = selected_event
 
-            # Run classifier only for the confidence/pose match display
             classifier = EventClassifier()
             classification = classifier.classify(pose_data)
             classification['event'] = event_type
@@ -288,8 +338,6 @@ if uploaded_file is not None:
 
             judge = TechniqueJudge(event_type)
             analysis = judge.analyze(pose_data)
-
-            # Judge already returns 1-100, just clamp cleanly
             analysis['overall_score'] = max(1, min(100, round(float(analysis['overall_score']))))
 
             increment_usage(user_id)
@@ -344,8 +392,8 @@ if uploaded_file is not None:
                 severity_colors = {'high': 'error-high', 'medium': 'error-medium', 'low': 'error-low'}
                 severity_labels = {'high': '🔴 HIGH', 'medium': '🟡 MEDIUM', 'low': '🟢 LOW'}
                 for i, error in enumerate(analysis['errors'], 1):
-                    css_class = severity_colors.get(error['severity'], 'error-medium')
-                    sev_label = severity_labels.get(error['severity'], error['severity'].upper())
+                    css_class  = severity_colors.get(error['severity'], 'error-medium')
+                    sev_label  = severity_labels.get(error['severity'], error['severity'].upper())
                     drills_html = ''.join([f'<span class="drill-pill">{d}</span>' for d in error.get('drills', [])])
                     st.markdown(f"""
                     <div class="{css_class}">
