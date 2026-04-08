@@ -30,97 +30,268 @@ st.set_page_config(
 GLOBAL_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
-html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-color: #0a0a0a; color: #e8e8e8; }
+
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif;
+    background-color: #0a0a0a;
+    color: #e8e8e8;
+}
 .stApp { background: #0a0a0a; }
-[data-testid="stSidebar"] { background: #111111; border-right: 1px solid #1e1e1e; }
+
+/* ── Sidebar base ─────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background: #111111 !important;
+    border-right: 1px solid #1e1e1e !important;
+    min-width: 220px !important;
+    max-width: 220px !important;
+}
 [data-testid="stSidebar"] * { color: #e8e8e8 !important; }
-#MainMenu, footer, header { visibility: hidden; }
+
+/* Hide Streamlit's own collapse arrow — we handle it ourselves */
+[data-testid="stSidebarCollapseButton"] { display: none !important; }
 section[data-testid="stSidebarCollapsedControl"] { display: none !important; }
+
+/* ── When sidebar is closed, collapse it completely ──────────── */
+[data-testid="stSidebar"][aria-expanded="false"] {
+    margin-left: -220px !important;
+    visibility: hidden !important;
+    width: 0px !important;
+    min-width: 0px !important;
+}
+
+#MainMenu, footer, header { visibility: hidden; }
 .block-container { padding-top: 1rem; padding-bottom: 2rem; }
-.hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 5rem; line-height: 0.9; letter-spacing: 2px; color: #ffffff; margin-bottom: 0; }
+
+/* ── Typography ──────────────────────────────────────────────── */
+.hero-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 5rem;
+    line-height: 0.9;
+    letter-spacing: 2px;
+    color: #ffffff;
+    margin-bottom: 0;
+}
 .hero-accent { color: #ff3b3b; }
-.hero-sub { font-size: 0.95rem; color: #666; letter-spacing: 3px; text-transform: uppercase; margin-top: 0.5rem; margin-bottom: 2rem; }
-[data-testid="stFileUploader"] { background: #111 !important; border: 1px dashed #2a2a2a !important; border-radius: 12px !important; }
+.hero-sub {
+    font-size: 0.95rem;
+    color: #666;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+/* ── File uploader ────────────────────────────────────────────── */
+[data-testid="stFileUploader"] {
+    background: #111 !important;
+    border: 1px dashed #2a2a2a !important;
+    border-radius: 12px !important;
+}
 [data-testid="stFileUploader"]:hover { border-color: #ff3b3b !important; }
 [data-testid="stFileUploader"] * { color: #888 !important; }
-.stButton > button { background: #ff3b3b !important; color: #fff !important; border: none !important; border-radius: 6px !important; font-family: 'Bebas Neue', sans-serif !important; font-size: 1.2rem !important; letter-spacing: 2px !important; padding: 0.6rem 2rem !important; transition: background 0.2s !important; width: 100% !important; }
-.stButton > button:hover { background: #cc2a2a !important; }
-.score-card { background: #111; border: 1px solid #1e1e1e; border-radius: 16px; padding: 2rem; text-align: center; }
-.score-number { font-family: 'Bebas Neue', sans-serif; font-size: 5rem; line-height: 1; margin: 0; }
-.score-label { font-size: 0.75rem; letter-spacing: 3px; text-transform: uppercase; color: #555; margin-top: 0.3rem; }
-.event-badge { display: inline-block; background: #ff3b3b; color: #fff; font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: 3px; padding: 0.3rem 1.2rem; border-radius: 4px; margin-bottom: 0.5rem; }
-.confidence-bar-wrap { background: #1e1e1e; border-radius: 99px; height: 4px; margin-top: 0.6rem; overflow: hidden; }
-.confidence-bar-fill { background: #ff3b3b; height: 4px; border-radius: 99px; }
-.error-high { background: #1a0a0a; border-left: 3px solid #ff3b3b; border-radius: 0 10px 10px 0; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
-.error-medium { background: #141008; border-left: 3px solid #f59e0b; border-radius: 0 10px 10px 0; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
-.error-low { background: #0a100a; border-left: 3px solid #22c55e; border-radius: 0 10px 10px 0; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
-.error-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 1px; color: #fff; margin-bottom: 0.5rem; }
-.error-meta { font-size: 0.8rem; color: #888; margin-bottom: 0.3rem; }
-.error-fix { font-size: 0.88rem; color: #ccc; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #1e1e1e; }
-.drill-pill { display: inline-block; background: #161616; border: 1px solid #2a2a2a; color: #ccc; font-size: 0.82rem; padding: 0.35rem 0.9rem; border-radius: 99px; margin: 0.25rem; }
-.section-header { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; letter-spacing: 2px; color: #fff; border-bottom: 1px solid #1e1e1e; padding-bottom: 0.5rem; margin-bottom: 1.2rem; margin-top: 2rem; }
-.usage-bar-wrap { background: #1e1e1e; border-radius: 99px; height: 4px; margin-top: 0.4rem; overflow: hidden; }
-.usage-bar-fill { background: #ff3b3b; height: 4px; border-radius: 99px; }
-.tip-box { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1.2rem; font-size: 0.85rem; color: #777; line-height: 1.8; }
-.tip-box strong { color: #aaa; }
-.summary-box { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1.2rem 1.5rem; font-size: 0.95rem; color: #aaa; line-height: 1.6; }
-[data-testid="stMetric"] { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1rem; }
-[data-testid="stMetricLabel"] { color: #666 !important; }
-[data-testid="stMetricValue"] { color: #fff !important; font-family: 'Bebas Neue', sans-serif !important; font-size: 2rem !important; }
-[data-testid="stExpander"] { background: #111 !important; border: 1px solid #1e1e1e !important; border-radius: 10px !important; }
-[data-testid="stDownloadButton"] > button { background: transparent !important; border: 1px solid #2a2a2a !important; color: #888 !important; font-size: 0.85rem !important; font-family: 'DM Sans', sans-serif !important; letter-spacing: 0 !important; width: auto !important; }
-[data-testid="stDownloadButton"] > button:hover { border-color: #ff3b3b !important; color: #fff !important; }
-.stProgress > div > div { background: #ff3b3b !important; }
-[data-baseweb="select"] { background: #111 !important; }
 
-/* Top bar nav buttons */
-.topnav-btn > button {
+/* ── Global button default (red filled) ──────────────────────── */
+.stButton > button {
+    background: #ff3b3b !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-family: 'Bebas Neue', sans-serif !important;
+    font-size: 1.2rem !important;
+    letter-spacing: 2px !important;
+    padding: 0.6rem 2rem !important;
+    transition: background 0.2s !important;
+    width: 100% !important;
+}
+.stButton > button:hover { background: #cc2a2a !important; }
+
+/* ── Sidebar nav buttons — ghost style, override red default ─── */
+.sidebar-nav-btn .stButton > button {
     background: transparent !important;
     border: 1px solid #1e1e1e !important;
     border-radius: 6px !important;
     font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.85rem !important;
+    font-size: 0.9rem !important;
+    font-weight: 400 !important;
     letter-spacing: 0 !important;
-    color: #666 !important;
-    padding: 0.4rem 0.8rem !important;
+    color: #888 !important;
+    padding: 0.5rem 0.8rem !important;
     width: 100% !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
 }
-.topnav-btn > button:hover {
+.sidebar-nav-btn .stButton > button:hover {
+    border-color: #ff3b3b !important;
+    color: #fff !important;
+    background: #1a1a1a !important;
+}
+
+/* Active nav button */
+.sidebar-nav-btn-active .stButton > button {
+    background: #1a0a0a !important;
+    border: 1px solid #ff3b3b !important;
+    border-radius: 6px !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.9rem !important;
+    font-weight: 400 !important;
+    letter-spacing: 0 !important;
+    color: #ff3b3b !important;
+    padding: 0.5rem 0.8rem !important;
+    width: 100% !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+}
+
+/* ── Sidebar toggle (hamburger) button ───────────────────────── */
+.sidebar-toggle-btn .stButton > button {
+    background: #1a1a1a !important;
+    border: 1px solid #2a2a2a !important;
+    border-radius: 6px !important;
+    font-size: 1.1rem !important;
+    font-family: 'DM Sans', sans-serif !important;
+    letter-spacing: 0 !important;
+    color: #888 !important;
+    padding: 0.3rem 0.7rem !important;
+    width: auto !important;
+    min-width: 0 !important;
+}
+.sidebar-toggle-btn .stButton > button:hover {
     border-color: #ff3b3b !important;
     color: #fff !important;
     background: #111 !important;
 }
 
-/* Sidebar toggle button */
-.sidebar-toggle-btn > button {
-    background: #1a1a1a !important;
+/* ── Result cards ─────────────────────────────────────────────── */
+.score-card {
+    background: #111;
+    border: 1px solid #1e1e1e;
+    border-radius: 16px;
+    padding: 2rem;
+    text-align: center;
+}
+.score-number {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 5rem;
+    line-height: 1;
+    margin: 0;
+}
+.score-label {
+    font-size: 0.75rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #555;
+    margin-top: 0.3rem;
+}
+.event-badge {
+    display: inline-block;
+    background: #ff3b3b;
+    color: #fff;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 3px;
+    padding: 0.3rem 1.2rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+.confidence-bar-wrap {
+    background: #1e1e1e;
+    border-radius: 99px;
+    height: 4px;
+    margin-top: 0.6rem;
+    overflow: hidden;
+}
+.confidence-bar-fill {
+    background: #ff3b3b;
+    height: 4px;
+    border-radius: 99px;
+}
+
+/* ── Error cards ──────────────────────────────────────────────── */
+.error-high   { background: #1a0a0a; border-left: 3px solid #ff3b3b; border-radius: 0 10px 10px 0; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
+.error-medium { background: #141008; border-left: 3px solid #f59e0b; border-radius: 0 10px 10px 0; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
+.error-low    { background: #0a100a; border-left: 3px solid #22c55e; border-radius: 0 10px 10px 0; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
+.error-title  { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 1px; color: #fff; margin-bottom: 0.5rem; }
+.error-meta   { font-size: 0.8rem; color: #888; margin-bottom: 0.3rem; }
+.error-fix    { font-size: 0.88rem; color: #ccc; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #1e1e1e; }
+
+.drill-pill {
+    display: inline-block;
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    color: #ccc;
+    font-size: 0.82rem;
+    padding: 0.35rem 0.9rem;
+    border-radius: 99px;
+    margin: 0.25rem;
+}
+.section-header {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.8rem;
+    letter-spacing: 2px;
+    color: #fff;
+    border-bottom: 1px solid #1e1e1e;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1.2rem;
+    margin-top: 2rem;
+}
+.usage-bar-wrap { background: #1e1e1e; border-radius: 99px; height: 4px; margin-top: 0.4rem; overflow: hidden; }
+.usage-bar-fill { background: #ff3b3b; height: 4px; border-radius: 99px; }
+.tip-box {
+    background: #111;
+    border: 1px solid #1e1e1e;
+    border-radius: 10px;
+    padding: 1.2rem;
+    font-size: 0.85rem;
+    color: #777;
+    line-height: 1.8;
+}
+.tip-box strong { color: #aaa; }
+.summary-box {
+    background: #111;
+    border: 1px solid #1e1e1e;
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    font-size: 0.95rem;
+    color: #aaa;
+    line-height: 1.6;
+}
+[data-testid="stMetric"] { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1rem; }
+[data-testid="stMetricLabel"] { color: #666 !important; }
+[data-testid="stMetricValue"] { color: #fff !important; font-family: 'Bebas Neue', sans-serif !important; font-size: 2rem !important; }
+[data-testid="stExpander"] { background: #111 !important; border: 1px solid #1e1e1e !important; border-radius: 10px !important; }
+[data-testid="stDownloadButton"] > button {
+    background: transparent !important;
     border: 1px solid #2a2a2a !important;
-    border-radius: 6px !important;
-    font-size: 1.1rem !important;
-    padding: 0.3rem 0.7rem !important;
-    width: auto !important;
-    min-width: 0 !important;
-    letter-spacing: 0 !important;
-    font-family: 'DM Sans', sans-serif !important;
     color: #888 !important;
+    font-size: 0.85rem !important;
+    font-family: 'DM Sans', sans-serif !important;
+    letter-spacing: 0 !important;
+    width: auto !important;
 }
-.sidebar-toggle-btn > button:hover {
-    border-color: #ff3b3b !important;
-    color: #fff !important;
-    background: #111 !important;
-}
+[data-testid="stDownloadButton"] > button:hover { border-color: #ff3b3b !important; color: #fff !important; }
+.stProgress > div > div { background: #ff3b3b !important; }
+[data-baseweb="select"] { background: #111 !important; }
 </style>
 """
 
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
-# ── AUTH GATE ─────────────────────────────────────────────────────────────────
+# ── SESSION STATE DEFAULTS ─────────────────────────────────────────────────────
+
+if "sidebar_open" not in st.session_state:
+    st.session_state["sidebar_open"] = True
+
+if "page" not in st.session_state:
+    st.session_state["page"] = "analyze"
+
+# ── AUTH GATE ──────────────────────────────────────────────────────────────────
 
 if "user" not in st.session_state:
     show_login_page()
     st.stop()
 
-# ── HANDLE STRIPE REDIRECT ────────────────────────────────────────────────────
+# ── HANDLE STRIPE REDIRECT ─────────────────────────────────────────────────────
+
 params = st.query_params
 if params.get("payment") == "success":
     uid = params.get("uid", "")
@@ -137,22 +308,98 @@ used_this_week = get_usage_this_week(user_id)
 can_go, remaining = can_analyze(user_id)
 FREE_LIMIT = 5
 
-# ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
+# ── SIDEBAR ────────────────────────────────────────────────────────────────────
 
-if "sidebar_open" not in st.session_state:
-    st.session_state["sidebar_open"] = True
+# Conditionally render sidebar content — when closed, render nothing so
+# Streamlit doesn't reserve space for it.
+if st.session_state["sidebar_open"]:
+    with st.sidebar:
+        # Logo
+        st.markdown("""
+        <div style="padding:1.2rem 0 1.5rem 0;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:3px;color:#fff;">
+                TRACK<span style="color:#ff3b3b;">FORM</span>
+            </div>
+            <div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-top:2px;">
+                AI Technique Coach
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-if not st.session_state["sidebar_open"]:
-    st.markdown("""
-    <style>
-    [data-testid="stSidebar"] { display: none !important; }
-    </style>
-    """, unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.5rem;">NAVIGATE</div>', unsafe_allow_html=True)
 
-# ── TOP BAR ───────────────────────────────────────────────────────────────────
+        pages = [
+            ("⚡", "Analyze",          "analyze"),
+            ("📊", "My Progress",      "progress"),
+            ("🏆", "Leaderboard",      "leaderboard"),
+            ("🎯", "Coach Dashboard",  "coach"),
+        ]
 
-toggle_col, nav1, nav2, nav3, nav4 = st.columns([0.5, 2, 2, 2, 2])
+        current_page = st.session_state["page"]
+        for icon_nav, label, key in pages:
+            is_active = current_page == key
+            css_class = "sidebar-nav-btn-active" if is_active else "sidebar-nav-btn"
+            st.markdown(f'<div class="{css_class}">', unsafe_allow_html=True)
+            if st.button(f"{icon_nav}  {label}", key=f"nav_{key}"):
+                st.session_state["page"] = key
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
+        st.divider()
+
+        # Usage / tier widget
+        if tier == "free":
+            usage_pct = int((used_this_week / FREE_LIMIT) * 100)
+            usage_color = "#22c55e" if used_this_week < 3 else "#f59e0b" if used_this_week < 5 else "#ff3b3b"
+            st.markdown(f"""
+            <div style="margin-bottom:1rem;">
+                <div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.4rem;">WEEKLY USAGE</div>
+                <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:{usage_color};">{used_this_week} / {FREE_LIMIT}</div>
+                <div class="usage-bar-wrap"><div class="usage-bar-fill" style="width:{usage_pct}%;background:{usage_color};"></div></div>
+                <div style="font-size:0.72rem;color:#444;margin-top:0.4rem;">{remaining} analyses left this week</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:0.8rem;margin-bottom:1rem;">
+                <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;color:#ff3b3b;">UPGRADE TO PRO</div>
+                <div style="font-size:0.75rem;color:#555;margin-top:0.3rem;">Unlimited analyses + progress tracking</div>
+                <div style="font-size:0.72rem;color:#333;margin-top:0.5rem;">$9.99/mo · trackformai@gmail.com</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            tier_color = "#ff3b3b" if tier == "coach" else "#f59e0b"
+            st.markdown(f"""
+            <div style="background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:0.8rem;margin-bottom:1rem;">
+                <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;color:{tier_color};">{tier.upper()} PLAN</div>
+                <div style="font-size:0.75rem;color:#555;margin-top:0.3rem;">Unlimited analyses ✓</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.6rem;">SUPPORTED EVENTS</div>', unsafe_allow_html=True)
+        for ico, name in [("⚡","Sprint blocks"),("🏋️","Shot put"),("💿","Discus"),("🏹","Javelin")]:
+            st.markdown(f'<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid #1a1a1a;font-size:0.85rem;color:#666;"><span style="width:6px;height:6px;border-radius:50%;background:#ff3b3b;display:inline-block;flex-shrink:0;"></span>{ico} {name}</div>', unsafe_allow_html=True)
+
+        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size:0.75rem;color:#333;margin-bottom:0.4rem;">Signed in as<br><span style="color:#555;">{user.email}</span></div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="sidebar-nav-btn">', unsafe_allow_html=True)
+        if st.button("⬡  Sign Out", key="signout"):
+            sign_out()
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="margin-top:2rem;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:0.75rem;letter-spacing:2px;color:#222;text-align:center;">
+                TRACKFORM-AI
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ── MAIN CONTENT AREA ──────────────────────────────────────────────────────────
+
+# Hamburger toggle lives at the very top of main content, always visible
+toggle_col, spacer = st.columns([0.3, 9.7])
 with toggle_col:
     icon = "☰" if not st.session_state["sidebar_open"] else "✕"
     st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
@@ -161,102 +408,9 @@ with toggle_col:
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-if "page" not in st.session_state:
-    st.session_state["page"] = "analyze"
+st.markdown("<hr style='border-color:#1a1a1a;margin:0.4rem 0 1.5rem 0;'>", unsafe_allow_html=True)
 
-nav_pages = [
-    ("⚡ Analyze", "analyze"),
-    ("📊 Progress", "progress"),
-    ("🏆 Leaderboard", "leaderboard"),
-    ("🎯 Coach", "coach"),
-]
-for col, (label, key) in zip([nav1, nav2, nav3, nav4], nav_pages):
-    with col:
-        st.markdown('<div class="topnav-btn">', unsafe_allow_html=True)
-        if st.button(label, key=f"topnav_{key}"):
-            st.session_state["page"] = key
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown("<hr style='border-color:#1a1a1a;margin:0.5rem 0 1.5rem 0;'>", unsafe_allow_html=True)
-
-# ── SIDEBAR ───────────────────────────────────────────────────────────────────
-
-with st.sidebar:
-    st.markdown("""
-    <div style="padding:1rem 0 1.5rem 0;">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:3px;color:#fff;">
-            TRACK<span style="color:#ff3b3b;">FORM</span>
-        </div>
-        <div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-top:2px;">
-            AI Technique Coach
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.6rem;">NAVIGATE</div>', unsafe_allow_html=True)
-
-    pages = [
-        ("⚡", "Analyze", "analyze"),
-        ("📊", "My Progress", "progress"),
-        ("🏆", "Leaderboard", "leaderboard"),
-        ("🎯", "Coach Dashboard", "coach"),
-    ]
-
-    for icon_nav, label, key in pages:
-        if st.button(f"{icon_nav}  {label}", key=f"nav_{key}"):
-            st.session_state["page"] = key
-            st.rerun()
-
-    st.divider()
-
-    if tier == "free":
-        usage_pct = int((used_this_week / FREE_LIMIT) * 100)
-        usage_color = "#22c55e" if used_this_week < 3 else "#f59e0b" if used_this_week < 5 else "#ff3b3b"
-        st.markdown(f"""
-        <div style="margin-bottom:1rem;">
-            <div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.4rem;">WEEKLY USAGE</div>
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:{usage_color};">{used_this_week} / {FREE_LIMIT}</div>
-            <div class="usage-bar-wrap"><div class="usage-bar-fill" style="width:{usage_pct}%;background:{usage_color};"></div></div>
-            <div style="font-size:0.72rem;color:#444;margin-top:0.4rem;">{remaining} analyses left this week</div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("""
-        <div style="background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:0.8rem;margin-bottom:1rem;">
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;color:#ff3b3b;">UPGRADE TO PRO</div>
-            <div style="font-size:0.75rem;color:#555;margin-top:0.3rem;">Unlimited analyses + progress tracking</div>
-            <div style="font-size:0.72rem;color:#333;margin-top:0.5rem;">$9.99/mo · trackformai@gmail.com</div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        tier_color = "#ff3b3b" if tier == "coach" else "#f59e0b"
-        st.markdown(f"""
-        <div style="background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:0.8rem;margin-bottom:1rem;">
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;color:{tier_color};">{tier.upper()} PLAN</div>
-            <div style="font-size:0.75rem;color:#555;margin-top:0.3rem;">Unlimited analyses ✓</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.6rem;">SUPPORTED EVENTS</div>', unsafe_allow_html=True)
-    for ico, name in [("⚡","Sprint blocks"),("🏋️","Shot put"),("💿","Discus"),("🏹","Javelin")]:
-        st.markdown(f'<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid #1a1a1a;font-size:0.85rem;color:#666;"><span style="width:6px;height:6px;border-radius:50%;background:#ff3b3b;display:inline-block;flex-shrink:0;"></span>{ico} {name}</div>', unsafe_allow_html=True)
-
-    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
-    st.markdown(f'<div style="font-size:0.75rem;color:#333;margin-bottom:0.4rem;">Signed in as<br><span style="color:#555;">{user.email}</span></div>', unsafe_allow_html=True)
-    if st.button("Sign Out", key="signout"):
-        sign_out()
-        st.rerun()
-
-    st.markdown("""
-    <div style="margin-top:auto;padding-top:2rem;">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:0.75rem;letter-spacing:2px;color:#222;text-align:center;">
-            TRACKFORM-AI
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# ── PAGE ROUTING ──────────────────────────────────────────────────────────────
+# ── PAGE ROUTING ───────────────────────────────────────────────────────────────
 
 page = st.session_state.get("page", "analyze")
 
@@ -272,7 +426,7 @@ if page == "progress":
     show_progress_page(user)
     st.stop()
 
-# ── ANALYZE PAGE ──────────────────────────────────────────────────────────────
+# ── ANALYZE PAGE ───────────────────────────────────────────────────────────────
 
 st.markdown("""
 <div style="margin-bottom:2rem;">
@@ -295,7 +449,7 @@ if not can_go:
     """, unsafe_allow_html=True)
     st.stop()
 
-# ── EVENT SELECTOR ────────────────────────────────────────────────────────────
+# ── EVENT SELECTOR ─────────────────────────────────────────────────────────────
 
 EVENT_OPTIONS = {
     "⚡  Sprint / Block Start": "sprint",
@@ -315,7 +469,7 @@ selected_event = EVENT_OPTIONS[selected_label]
 
 st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
 
-# ── FILE UPLOADER ─────────────────────────────────────────────────────────────
+# ── FILE UPLOADER ──────────────────────────────────────────────────────────────
 
 uploaded_file = st.file_uploader(
     "Drop your video here — side view works best",
@@ -489,7 +643,7 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
-# ── FOOTER ────────────────────────────────────────────────────────────────────
+# ── FOOTER ─────────────────────────────────────────────────────────────────────
 
 st.markdown("""
 <div style="margin-top:4rem;padding:1.2rem 0;border-top:1px solid #1a1a1a;text-align:center;">
