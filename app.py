@@ -35,7 +35,8 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 [data-testid="stSidebar"] { background: #111111; border-right: 1px solid #1e1e1e; }
 [data-testid="stSidebar"] * { color: #e8e8e8 !important; }
 #MainMenu, footer, header { visibility: hidden; }
-.block-container { padding-top: 2rem; padding-bottom: 2rem; }
+section[data-testid="stSidebarCollapsedControl"] { display: none !important; }
+.block-container { padding-top: 1rem; padding-bottom: 2rem; }
 .hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 5rem; line-height: 0.9; letter-spacing: 2px; color: #ffffff; margin-bottom: 0; }
 .hero-accent { color: #ff3b3b; }
 .hero-sub { font-size: 0.95rem; color: #666; letter-spacing: 3px; text-transform: uppercase; margin-top: 0.5rem; margin-bottom: 2rem; }
@@ -72,7 +73,25 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 .stProgress > div > div { background: #ff3b3b !important; }
 [data-baseweb="select"] { background: #111 !important; }
 
-/* Sidebar toggle button — small, top-left, always visible */
+/* Top bar nav buttons */
+.topnav-btn > button {
+    background: transparent !important;
+    border: 1px solid #1e1e1e !important;
+    border-radius: 6px !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.85rem !important;
+    letter-spacing: 0 !important;
+    color: #666 !important;
+    padding: 0.4rem 0.8rem !important;
+    width: 100% !important;
+}
+.topnav-btn > button:hover {
+    border-color: #ff3b3b !important;
+    color: #fff !important;
+    background: #111 !important;
+}
+
+/* Sidebar toggle button */
 .sidebar-toggle-btn > button {
     background: #1a1a1a !important;
     border: 1px solid #2a2a2a !important;
@@ -104,7 +123,7 @@ if "user" not in st.session_state:
 # ── HANDLE STRIPE REDIRECT ────────────────────────────────────────────────────
 params = st.query_params
 if params.get("payment") == "success":
-    uid  = params.get("uid", "")
+    uid = params.get("uid", "")
     tier_param = params.get("tier", "")
     if uid and tier_param in ["pro", "coach"]:
         handle_stripe_success(uid, tier_param)
@@ -120,20 +139,9 @@ FREE_LIMIT = 5
 
 # ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
 
-
-# ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
-
 if "sidebar_open" not in st.session_state:
     st.session_state["sidebar_open"] = True
 
-# Always hide Streamlit's built-in collapse button
-st.markdown("""
-<style>
-section[data-testid="stSidebarCollapsedControl"] { display: none !important; }
-</style>
-""", unsafe_allow_html=True)
-
-# Hide sidebar if closed
 if not st.session_state["sidebar_open"]:
     st.markdown("""
     <style>
@@ -141,22 +149,37 @@ if not st.session_state["sidebar_open"]:
     </style>
     """, unsafe_allow_html=True)
 
-# Toggle button
-icon = "☰" if not st.session_state["sidebar_open"] else "✕"
-st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
-if st.button(icon, key="sidebar_toggle"):
-    st.session_state["sidebar_open"] = not st.session_state["sidebar_open"]
-    st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
+# ── TOP BAR ───────────────────────────────────────────────────────────────────
 
-# ── TOP NAV (always visible) ──────────────────────────────────────────────────
-nav1, nav2, nav3, nav4 = st.columns(4)
-nav_pages = [("⚡ Analyze", "analyze"), ("📊 Progress", "progress"), ("🏆 Leaderboard", "leaderboard"), ("🎯 Coach", "coach")]
+toggle_col, nav1, nav2, nav3, nav4 = st.columns([0.5, 2, 2, 2, 2])
+
+with toggle_col:
+    icon = "☰" if not st.session_state["sidebar_open"] else "✕"
+    st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
+    if st.button(icon, key="sidebar_toggle"):
+        st.session_state["sidebar_open"] = not st.session_state["sidebar_open"]
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+if "page" not in st.session_state:
+    st.session_state["page"] = "analyze"
+
+nav_pages = [
+    ("⚡ Analyze", "analyze"),
+    ("📊 Progress", "progress"),
+    ("🏆 Leaderboard", "leaderboard"),
+    ("🎯 Coach", "coach"),
+]
 for col, (label, key) in zip([nav1, nav2, nav3, nav4], nav_pages):
     with col:
+        st.markdown('<div class="topnav-btn">', unsafe_allow_html=True)
         if st.button(label, key=f"topnav_{key}"):
             st.session_state["page"] = key
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown("<hr style='border-color:#1a1a1a;margin:0.5rem 0 1.5rem 0;'>", unsafe_allow_html=True)
+
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -172,9 +195,6 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.6rem;">NAVIGATE</div>', unsafe_allow_html=True)
-
-    if "page" not in st.session_state:
-        st.session_state["page"] = "analyze"
 
     pages = [
         ("⚡", "Analyze", "analyze"),
@@ -226,7 +246,14 @@ with st.sidebar:
     if st.button("Sign Out", key="signout"):
         sign_out()
         st.rerun()
-    st.markdown('<div style="margin-top:1rem;font-size:0.65rem;color:#1e1e1e;letter-spacing:1px;">Built with MediaPipe + Streamlit</div>', unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="margin-top:auto;padding-top:2rem;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:0.75rem;letter-spacing:2px;color:#222;text-align:center;">
+            TRACKFORM-AI
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ── PAGE ROUTING ──────────────────────────────────────────────────────────────
@@ -462,4 +489,15 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
-st.markdown('<div style="margin-top:3rem;font-size:0.7rem;color:#1e1e1e;letter-spacing:2px;text-align:center;">TRACKFORM AI · MEDIAPIPE + STREAMLIT · FREE & OPEN SOURCE</div>', unsafe_allow_html=True)
+# ── FOOTER ────────────────────────────────────────────────────────────────────
+
+st.markdown("""
+<div style="margin-top:4rem;padding:1.2rem 0;border-top:1px solid #1a1a1a;text-align:center;">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:3px;color:#2a2a2a;">
+        TRACKFORM-AI
+    </div>
+    <div style="font-size:0.65rem;color:#1a1a1a;letter-spacing:2px;margin-top:0.2rem;">
+        MEDIAPIPE + STREAMLIT · FREE & OPEN SOURCE
+    </div>
+</div>
+""", unsafe_allow_html=True)
