@@ -72,23 +72,16 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 .stProgress > div > div { background: #ff3b3b !important; }
 [data-baseweb="select"] { background: #111 !important; }
 
-/* Sidebar toggle button — small, top-left, always visible */
-.sidebar-toggle-btn > button {
+/* Only style the sidebar collapse button, don't hide it */
+[data-testid="stSidebarCollapseButton"] {
     background: #1a1a1a !important;
     border: 1px solid #2a2a2a !important;
     border-radius: 6px !important;
-    font-size: 1.1rem !important;
-    padding: 0.3rem 0.7rem !important;
-    width: auto !important;
-    min-width: 0 !important;
-    letter-spacing: 0 !important;
-    font-family: 'DM Sans', sans-serif !important;
     color: #888 !important;
 }
-.sidebar-toggle-btn > button:hover {
+[data-testid="stSidebarCollapseButton"]:hover {
     border-color: #ff3b3b !important;
     color: #fff !important;
-    background: #111 !important;
 }
 </style>
 """
@@ -117,29 +110,6 @@ tier = get_tier(user_id)
 used_this_week = get_usage_this_week(user_id)
 can_go, remaining = can_analyze(user_id)
 FREE_LIMIT = 5
-
-# ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
-
-if "sidebar_open" not in st.session_state:
-    st.session_state["sidebar_open"] = True
-
-# Toggle button sits in the top-left of the main content area
-toggle_col, _ = st.columns([1, 20])
-with toggle_col:
-    st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
-    icon = "✕" if st.session_state["sidebar_open"] else "☰"
-    if st.button(icon, key="sidebar_toggle"):
-        st.session_state["sidebar_open"] = not st.session_state["sidebar_open"]
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# Collapse/expand sidebar via CSS injection
-if not st.session_state["sidebar_open"]:
-    st.markdown("""
-    <style>
-    [data-testid="stSidebar"] { display: none !important; }
-    </style>
-    """, unsafe_allow_html=True)
 
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 
