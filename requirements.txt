@@ -6,3 +6,4 @@ scikit-learn
 fastdtw
 pandas
 requests
+stripe
