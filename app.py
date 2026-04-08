@@ -120,20 +120,20 @@ FREE_LIMIT = 5
 
 # ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
 
+
+# ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
+
 if "sidebar_open" not in st.session_state:
     st.session_state["sidebar_open"] = True
 
-# Toggle button sits in the top-left of the main content area
-toggle_col, _ = st.columns([1, 20])
-with toggle_col:
-    st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
-    icon = "✕" if st.session_state["sidebar_open"] else "☰"
-    if st.button(icon, key="sidebar_toggle"):
-        st.session_state["sidebar_open"] = not st.session_state["sidebar_open"]
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+# Always hide Streamlit's built-in collapse button
+st.markdown("""
+<style>
+section[data-testid="stSidebarCollapsedControl"] { display: none !important; }
+</style>
+""", unsafe_allow_html=True)
 
-# Collapse/expand sidebar via CSS injection
+# Hide sidebar if closed
 if not st.session_state["sidebar_open"]:
     st.markdown("""
     <style>
@@ -141,6 +141,22 @@ if not st.session_state["sidebar_open"]:
     </style>
     """, unsafe_allow_html=True)
 
+# Toggle button
+icon = "☰" if not st.session_state["sidebar_open"] else "✕"
+st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
+if st.button(icon, key="sidebar_toggle"):
+    st.session_state["sidebar_open"] = not st.session_state["sidebar_open"]
+    st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ── TOP NAV (always visible) ──────────────────────────────────────────────────
+nav1, nav2, nav3, nav4 = st.columns(4)
+nav_pages = [("⚡ Analyze", "analyze"), ("📊 Progress", "progress"), ("🏆 Leaderboard", "leaderboard"), ("🎯 Coach", "coach")]
+for col, (label, key) in zip([nav1, nav2, nav3, nav4], nav_pages):
+    with col:
+        if st.button(label, key=f"topnav_{key}"):
+            st.session_state["page"] = key
+            st.rerun()
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
