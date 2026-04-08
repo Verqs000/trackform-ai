@@ -28,15 +28,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# NO CSS THAT HIDES SIDEBAR - NEVER USE: [data-testid="stSidebar"] {display: none}
+
 GLOBAL_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-color: #0a0a0a; color: #e8e8e8; }
 .stApp { background: #0a0a0a; }
+/* Sidebar styling - NEVER hide it */
 [data-testid="stSidebar"] { background: #111111 !important; border-right: 1px solid #1e1e1e !important; }
 [data-testid="stSidebar"] * { color: #e8e8e8 !important; }
-/* NEVER hide the sidebar completely - this breaks everything */
-/* [data-testid="stSidebar"] { display: none !important; }  <-- DON'T DO THIS */
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding-top: 2rem; padding-bottom: 2rem; }
 .hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 5rem; line-height: 0.9; letter-spacing: 2px; color: #ffffff; margin-bottom: 0; }
@@ -121,20 +122,26 @@ with st.sidebar:
     if "page" not in st.session_state:
         st.session_state["page"] = "analyze"
 
-    pages = [
-        ("⚡", "Analyze", "analyze"),
-        ("📊", "My Progress", "progress"),
-        ("🏆", "Leaderboard", "leaderboard"),
-        ("🎯", "Coach Dashboard", "coach"),
-    ]
-
-    for icon_nav, label, key in pages:
-        if st.button(f"{icon_nav}  {label}", key=f"nav_{key}"):
-            st.session_state["page"] = key
-            st.rerun()
+    # Navigation buttons
+    if st.button("⚡  Analyze", key="nav_analyze"):
+        st.session_state["page"] = "analyze"
+        st.rerun()
+    
+    if st.button("📊  My Progress", key="nav_progress"):
+        st.session_state["page"] = "progress"
+        st.rerun()
+        
+    if st.button("🏆  Leaderboard", key="nav_leaderboard"):
+        st.session_state["page"] = "leaderboard"
+        st.rerun()
+        
+    if st.button("🎯  Coach Dashboard", key="nav_coach"):
+        st.session_state["page"] = "coach"
+        st.rerun()
 
     st.divider()
 
+    # Usage stats
     if tier == "free":
         usage_pct = int((used_this_week / FREE_LIMIT) * 100)
         usage_color = "#22c55e" if used_this_week < 3 else "#f59e0b" if used_this_week < 5 else "#ff3b3b"
@@ -179,15 +186,12 @@ page = st.session_state.get("page", "analyze")
 
 if page == "leaderboard":
     show_leaderboard_page(user)
-    # Don't stop here - let the sidebar render
 elif page == "coach":
     show_coach_page(user)
-    # Don't stop here - let the sidebar render  
 elif page == "progress":
     show_progress_page(user)
-    # Don't stop here - let the sidebar render
 else:
-    # ── ANALYZE PAGE ──────────────────────────────────────────────────────────────
+    # ── ANALYZE PAGE ─────────────────────────────────────────────────────────
     
     st.markdown("""
     <div style="margin-bottom:2rem;">
@@ -209,7 +213,7 @@ else:
         </div>
         """, unsafe_allow_html=True)
     else:
-        # ── EVENT SELECTOR ────────────────────────────────────────────────────────────
+        # ── EVENT SELECTOR ────────────────────────────────────────────────────
 
         EVENT_OPTIONS = {
             "⚡  Sprint / Block Start": "sprint",
@@ -229,7 +233,7 @@ else:
 
         st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
 
-        # ── FILE UPLOADER ─────────────────────────────────────────────────────────────
+        # ── FILE UPLOADER ─────────────────────────────────────────────────────
 
         uploaded_file = st.file_uploader(
             "Drop your video here — side view works best",
