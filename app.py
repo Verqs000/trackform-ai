@@ -1,5 +1,5 @@
 """
-TrackForm AI - Main Web App
+TrackForm AI — Main Web App (Production Ready)
 Run with: streamlit run app.py
 """
 
@@ -8,18 +8,36 @@ import sys
 import os
 import tempfile
 import json
+import mimetypes
+import time
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from models.pose_extractor import PoseExtractor
-from models.event_classifier import EventClassifier
 from models.technique_judge import TechniqueJudge
-from auth import can_analyze, increment_usage, save_analysis, get_tier, get_usage_this_week, sign_out, handle_stripe_success, upgrade_tier
+from auth import (
+    can_analyze, increment_usage, save_analysis,
+    get_tier, get_usage_this_week, sign_out, handle_stripe_success
+)
 from login_page import show_login_page
 from coach_page import show_coach_page
 from progress_page import show_progress_page
 from leaderboard_page import show_leaderboard_page
 
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+MAX_VIDEO_SIZE_MB = 50
+MAX_VIDEO_SIZE_BYTES = MAX_VIDEO_SIZE_MB * 1024 * 1024
+ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-msvideo", "video/x-matroska", "video/webm"]
+ALLOWED_EXTENSIONS = [".mp4", ".mov", ".avi", ".mkv", ".webm"]
+FREE_LIMIT = 5
+ANALYSIS_TIMEOUT_SECONDS = 120
+
+# =============================================================================
+# PAGE CONFIG
+# =============================================================================
 st.set_page_config(
     page_title="TrackForm AI",
     page_icon="⚡",
@@ -27,423 +45,280 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-GLOBAL_CSS = """
+# =============================================================================
+# SESSION STATE
+# =============================================================================
+if "sidebar_open" not in st.session_state:
+    st.session_state.sidebar_open = True
+if "page" not in st.session_state:
+    st.session_state.page = "analyze"
+if "analysis_results" not in st.session_state:
+    st.session_state.analysis_results = None
+if "last_upload" not in st.session_state:
+    st.session_state.last_upload = None
+if "processed_session" not in st.session_state:
+    st.session_state.processed_session = None
+
+# =============================================================================
+# GLOBAL CSS
+# =============================================================================
+st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
-html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-color: #0a0a0a; color: #e8e8e8; }
-.stApp { background: #0a0a0a; }
-[data-testid="stSidebar"] { background: #111111; border-right: 1px solid #1e1e1e; }
-[data-testid="stSidebar"] * { color: #e8e8e8 !important; }
-#MainMenu, footer, header { visibility: hidden; }
-.block-container { padding-top: 2rem; padding-bottom: 2rem; }
-.hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 5rem; line-height: 0.9; letter-spacing: 2px; color: #ffffff; margin-bottom: 0; }
-.hero-accent { color: #ff3b3b; }
-.hero-sub { font-size: 0.95rem; color: #666; letter-spacing: 3px; text-transform: uppercase; margin-top: 0.5rem; margin-bottom: 2rem; }
-[data-testid="stFileUploader"] { background: #111 !important; border: 1px dashed #2a2a2a !important; border-radius: 12px !important; }
-[data-testid="stFileUploader"]:hover { border-color: #ff3b3b !important; }
-[data-testid="stFileUploader"] * { color: #888 !important; }
-.stButton > button { background: #ff3b3b !important; color: #fff !important; border: none !important; border-radius: 6px !important; font-family: 'Bebas Neue', sans-serif !important; font-size: 1.2rem !important; letter-spacing: 2px !important; padding: 0.6rem 2rem !important; transition: background 0.2s !important; width: 100% !important; }
-.stButton > button:hover { background: #cc2a2a !important; }
-.score-card { background: #111; border: 1px solid #1e1e1e; border-radius: 16px; padding: 2rem; text-align: center; }
-.score-number { font-family: 'Bebas Neue', sans-serif; font-size: 5rem; line-height: 1; margin: 0; }
-.score-label { font-size: 0.75rem; letter-spacing: 3px; text-transform: uppercase; color: #555; margin-top: 0.3rem; }
-.event-badge { display: inline-block; background: #ff3b3b; color: #fff; font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: 3px; padding: 0.3rem 1.2rem; border-radius: 4px; margin-bottom: 0.5rem; }
-.confidence-bar-wrap { background: #1e1e1e; border-radius: 99px; height: 4px; margin-top: 0.6rem; overflow: hidden; }
-.confidence-bar-fill { background: #ff3b3b; height: 4px; border-radius: 99px; }
-.error-high { background: #1a0a0a; border-left: 3px solid #ff3b3b; border-radius: 0 10px 10px 0; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
-.error-medium { background: #141008; border-left: 3px solid #f59e0b; border-radius: 0 10px 10px 0; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
-.error-low { background: #0a100a; border-left: 3px solid #22c55e; border-radius: 0 10px 10px 0; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
-.error-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 1px; color: #fff; margin-bottom: 0.5rem; }
-.error-meta { font-size: 0.8rem; color: #888; margin-bottom: 0.3rem; }
-.error-fix { font-size: 0.88rem; color: #ccc; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #1e1e1e; }
-.drill-pill { display: inline-block; background: #161616; border: 1px solid #2a2a2a; color: #ccc; font-size: 0.82rem; padding: 0.35rem 0.9rem; border-radius: 99px; margin: 0.25rem; }
-.section-header { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; letter-spacing: 2px; color: #fff; border-bottom: 1px solid #1e1e1e; padding-bottom: 0.5rem; margin-bottom: 1.2rem; margin-top: 2rem; }
-.usage-bar-wrap { background: #1e1e1e; border-radius: 99px; height: 4px; margin-top: 0.4rem; overflow: hidden; }
-.usage-bar-fill { background: #ff3b3b; height: 4px; border-radius: 99px; }
-.tip-box { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1.2rem; font-size: 0.85rem; color: #777; line-height: 1.8; }
-.tip-box strong { color: #aaa; }
-.summary-box { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1.2rem 1.5rem; font-size: 0.95rem; color: #aaa; line-height: 1.6; }
-[data-testid="stMetric"] { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1rem; }
-[data-testid="stMetricLabel"] { color: #666 !important; }
-[data-testid="stMetricValue"] { color: #fff !important; font-family: 'Bebas Neue', sans-serif !important; font-size: 2rem !important; }
-[data-testid="stExpander"] { background: #111 !important; border: 1px solid #1e1e1e !important; border-radius: 10px !important; }
-[data-testid="stDownloadButton"] > button { background: transparent !important; border: 1px solid #2a2a2a !important; color: #888 !important; font-size: 0.85rem !important; font-family: 'DM Sans', sans-serif !important; letter-spacing: 0 !important; width: auto !important; }
-[data-testid="stDownloadButton"] > button:hover { border-color: #ff3b3b !important; color: #fff !important; }
-.stProgress > div > div { background: #ff3b3b !important; }
-[data-baseweb="select"] { background: #111 !important; }
 
-/* Sidebar toggle button — small, top-left, always visible */
-.sidebar-toggle-btn > button {
-    background: #1a1a1a !important;
-    border: 1px solid #2a2a2a !important;
-    border-radius: 6px !important;
-    font-size: 1.1rem !important;
-    padding: 0.3rem 0.7rem !important;
-    width: auto !important;
-    min-width: 0 !important;
-    letter-spacing: 0 !important;
-    font-family: 'DM Sans', sans-serif !important;
+html, body, [class*="css"] { 
+    font-family: 'DM Sans', sans-serif; 
+    background-color: #0a0a0a; 
+    color: #e8e8e8; 
+}
+.stApp { background: #0a0a0a; }
+
+[data-testid="stSidebar"] { 
+    background: #111111 !important; 
+    border-right: 1px solid #1e1e1e !important; 
+    min-width: 240px !important; 
+    max-width: 240px !important; 
+}
+[data-testid="stSidebarCollapseButton"] { display: none !important; }
+
+.hero-title { 
+    font-family: 'Bebas Neue', sans-serif; 
+    font-size: 5.2rem; 
+    line-height: 0.9; 
+    letter-spacing: 2px; 
+    color: #fff; 
+}
+.hero-accent { color: #ff3b3b; }
+
+.stButton > button { 
+    background: #ff3b3b !important; 
+    color: #fff !important; 
+    border: none !important; 
+    border-radius: 6px !important; 
+    font-family: 'Bebas Neue', sans-serif !important; 
+    font-size: 1.2rem !important; 
+    width: 100% !important;
+    transition: all 0.2s ease;
+}
+.stButton > button:hover { background: #ff5555 !important; transform: translateY(-1px); }
+
+.nav-item .stButton > button { 
+    background: transparent !important; 
+    border: 1px solid #1e1e1e !important; 
+    color: #888 !important; 
+    text-align: left !important;
+}
+.nav-item-active .stButton > button { 
+    background: #1a0a0a !important; 
+    border: 1px solid #ff3b3b !important; 
+    color: #ff3b3b !important; 
+}
+
+.toggle-btn .stButton > button { 
+    background: #1a1a1a !important; 
+    border: 1px solid #2a2a2a !important; 
+    font-size: 1.5rem !important; 
     color: #888 !important;
 }
-.sidebar-toggle-btn > button:hover {
-    border-color: #ff3b3b !important;
-    color: #fff !important;
-    background: #111 !important;
-}
 </style>
-"""
+""", unsafe_allow_html=True)
 
-st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
-
-# ── AUTH GATE ─────────────────────────────────────────────────────────────────
-
+# =============================================================================
+# AUTH
+# =============================================================================
 if "user" not in st.session_state:
     show_login_page()
     st.stop()
 
-# ── HANDLE STRIPE REDIRECT ────────────────────────────────────────────────────
-params = st.query_params
-if params.get("payment") == "success":
-    uid  = params.get("uid", "")
-    tier_param = params.get("tier", "")
-    if uid and tier_param in ["pro", "coach"]:
-        handle_stripe_success(uid, tier_param)
-        st.query_params.clear()
-        st.success(f"🎉 Payment confirmed! Your account is now {tier_param.upper()}.")
-
 user = st.session_state["user"]
 user_id = user.id
+
+# =============================================================================
+# STRIPE PAYMENT VERIFICATION
+# =============================================================================
+params = st.query_params
+if params.get("payment") == "success":
+    session_id = params.get("session_id")
+    if session_id and st.session_state.get("processed_session") != session_id:
+        try:
+            import stripe
+            session = stripe.checkout.Session.retrieve(session_id)
+            if session.payment_status == "paid":
+                uid = session.metadata.get("user_id")
+                tier_param = session.metadata.get("tier")
+                if uid == user_id and tier_param in ["pro", "coach"]:
+                    handle_stripe_success(uid, tier_param)
+                    st.session_state.processed_session = session_id
+                    st.query_params.clear()
+                    st.success(f"🎉 Payment confirmed! Your account is now {tier_param.upper()}.")
+                    st.rerun()
+        except Exception as e:
+            st.error("Payment verification failed.")
+
+# =============================================================================
+# USER DATA
+# =============================================================================
 tier = get_tier(user_id)
 used_this_week = get_usage_this_week(user_id)
 can_go, remaining = can_analyze(user_id)
 FREE_LIMIT = 5
 
-# ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
+# =============================================================================
+# SIDEBAR
+# =============================================================================
+if st.session_state.sidebar_open:
+    with st.sidebar:
+        st.markdown("""
+        <div style="padding:1.8rem 0 1.8rem 0;">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:2.1rem;letter-spacing:3px;color:#fff;">
+                TRACK<span style="color:#ff3b3b;">FORM</span>
+            </div>
+            <div style="font-size:0.72rem;letter-spacing:3px;color:#444;">AI Technique Coach</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-if "sidebar_open" not in st.session_state:
-    st.session_state["sidebar_open"] = True
+        st.markdown("**NAVIGATE**")
+        nav_items = [
+            ("⚡", "Analyze", "analyze"),
+            ("📊", "My Progress", "progress"),
+            ("🏆", "Leaderboard", "leaderboard"),
+            ("🎯", "Coach Dashboard", "coach")
+        ]
+        for icon, label, key in nav_items:
+            active = "nav-item-active" if st.session_state.page == key else "nav-item"
+            st.markdown(f'<div class="{active}">', unsafe_allow_html=True)
+            if st.button(f"{icon}  {label}", key=f"nav_{key}", use_container_width=True):
+                st.session_state.page = key
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
 
-# Toggle button sits in the top-left of the main content area
-toggle_col, _ = st.columns([1, 20])
-with toggle_col:
-    st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
-    icon = "✕" if st.session_state["sidebar_open"] else "☰"
+        st.divider()
+
+        if tier == "free":
+            pct = min(int((used_this_week / FREE_LIMIT) * 100), 100)
+            st.markdown(f"""
+            <div style="background:#111;border:1px solid #1e1e1e;border-radius:12px;padding:1.2rem;">
+                <div style="font-size:0.75rem;color:#666;">WEEKLY USAGE</div>
+                <div style="font-size:2rem;font-family:'Bebas Neue',sans-serif;color:#ff3b3b;">{used_this_week}/{FREE_LIMIT}</div>
+                <div style="height:6px;background:#1e1e1e;border-radius:10px;margin:8px 0;">
+                    <div style="height:6px;width:{pct}%;background:#ff3b3b;border-radius:10px;"></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.success(f"✅ {tier.upper()} Plan — Unlimited")
+
+        st.divider()
+        if st.button("🚪 Sign Out", use_container_width=True):
+            sign_out()
+            st.rerun()
+
+# =============================================================================
+# HAMBURGER TOGGLE
+# =============================================================================
+col_toggle, _ = st.columns([0.08, 0.92])
+with col_toggle:
+    icon = "✕" if st.session_state.sidebar_open else "☰"
+    st.markdown('<div class="toggle-btn">', unsafe_allow_html=True)
     if st.button(icon, key="sidebar_toggle"):
-        st.session_state["sidebar_open"] = not st.session_state["sidebar_open"]
+        st.session_state.sidebar_open = not st.session_state.sidebar_open
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Collapse/expand sidebar via CSS injection
-if not st.session_state["sidebar_open"]:
-    st.markdown("""
-    <style>
-    [data-testid="stSidebar"] { display: none !important; }
-    </style>
-    """, unsafe_allow_html=True)
+st.markdown("<hr style='border-color:#1a1a1a;margin:0.5rem 0 1.5rem 0;'>", unsafe_allow_html=True)
 
-# ── SIDEBAR ───────────────────────────────────────────────────────────────────
-
-with st.sidebar:
-    st.markdown("""
-    <div style="padding:1rem 0 1.5rem 0;">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:3px;color:#fff;">
-            TRACK<span style="color:#ff3b3b;">FORM</span>
-        </div>
-        <div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-top:2px;">
-            AI Technique Coach
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.6rem;">NAVIGATE</div>', unsafe_allow_html=True)
-
-    if "page" not in st.session_state:
-        st.session_state["page"] = "analyze"
-
-    pages = [
-        ("⚡", "Analyze", "analyze"),
-        ("📊", "My Progress", "progress"),
-        ("🏆", "Leaderboard", "leaderboard"),
-        ("🎯", "Coach Dashboard", "coach"),
-    ]
-
-    for icon_nav, label, key in pages:
-        if st.button(f"{icon_nav}  {label}", key=f"nav_{key}"):
-            st.session_state["page"] = key
-            st.rerun()
-
-    st.divider()
-
-    if tier == "free":
-        usage_pct = int((used_this_week / FREE_LIMIT) * 100)
-        usage_color = "#22c55e" if used_this_week < 3 else "#f59e0b" if used_this_week < 5 else "#ff3b3b"
-        st.markdown(f"""
-        <div style="margin-bottom:1rem;">
-            <div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.4rem;">WEEKLY USAGE</div>
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:{usage_color};">{used_this_week} / {FREE_LIMIT}</div>
-            <div class="usage-bar-wrap"><div class="usage-bar-fill" style="width:{usage_pct}%;background:{usage_color};"></div></div>
-            <div style="font-size:0.72rem;color:#444;margin-top:0.4rem;">{remaining} analyses left this week</div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("""
-        <div style="background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:0.8rem;margin-bottom:1rem;">
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;color:#ff3b3b;">UPGRADE TO PRO</div>
-            <div style="font-size:0.75rem;color:#555;margin-top:0.3rem;">Unlimited analyses + progress tracking</div>
-            <div style="font-size:0.72rem;color:#333;margin-top:0.5rem;">$9.99/mo · trackformai@gmail.com</div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        tier_color = "#ff3b3b" if tier == "coach" else "#f59e0b"
-        st.markdown(f"""
-        <div style="background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:0.8rem;margin-bottom:1rem;">
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;color:{tier_color};">{tier.upper()} PLAN</div>
-            <div style="font-size:0.75rem;color:#555;margin-top:0.3rem;">Unlimited analyses ✓</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.6rem;">SUPPORTED EVENTS</div>', unsafe_allow_html=True)
-    for ico, name in [("⚡","Sprint blocks"),("🏋️","Shot put"),("💿","Discus"),("🏹","Javelin")]:
-        st.markdown(f'<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid #1a1a1a;font-size:0.85rem;color:#666;"><span style="width:6px;height:6px;border-radius:50%;background:#ff3b3b;display:inline-block;flex-shrink:0;"></span>{ico} {name}</div>', unsafe_allow_html=True)
-
-    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
-    st.markdown(f'<div style="font-size:0.75rem;color:#333;margin-bottom:0.4rem;">Signed in as<br><span style="color:#555;">{user.email}</span></div>', unsafe_allow_html=True)
-    if st.button("Sign Out", key="signout"):
-        sign_out()
-        st.rerun()
-    st.markdown('<div style="margin-top:1rem;font-size:0.65rem;color:#1e1e1e;letter-spacing:1px;">Built with MediaPipe + Streamlit</div>', unsafe_allow_html=True)
-
-
-# ── PAGE ROUTING ──────────────────────────────────────────────────────────────
-
-page = st.session_state.get("page", "analyze")
-
-if page == "leaderboard":
-    show_leaderboard_page(user)
+# =============================================================================
+# PAGE ROUTING
+# =============================================================================
+if st.session_state.page != "analyze":
+    if st.session_state.page == "progress":
+        show_progress_page(user)
+    elif st.session_state.page == "leaderboard":
+        show_leaderboard_page(user)
+    elif st.session_state.page == "coach":
+        show_coach_page(user)
     st.stop()
 
-if page == "coach":
-    show_coach_page(user)
-    st.stop()
-
-if page == "progress":
-    show_progress_page(user)
-    st.stop()
-
-# ── ANALYZE PAGE ──────────────────────────────────────────────────────────────
-
-st.markdown("""
-<div style="margin-bottom:2rem;">
-    <div class="hero-title">TRACK<span class="hero-accent">FORM</span><br>AI</div>
-    <div class="hero-sub">⚡ Elite technique analysis — free</div>
-</div>
-""", unsafe_allow_html=True)
+# =============================================================================
+# ANALYZE PAGE
+# =============================================================================
+st.markdown('<div class="hero-title">TRACK<span class="hero-accent">FORM</span><br>AI</div>', unsafe_allow_html=True)
+st.markdown('<div style="color:#666;font-size:1.1rem;letter-spacing:3px;">ELITE TECHNIQUE ANALYSIS</div>', unsafe_allow_html=True)
 
 if not can_go:
-    st.markdown(f"""
-    <div style="background:#1a0a0a;border:1px solid #ff3b3b;border-radius:12px;padding:2rem;text-align:center;margin-bottom:2rem;">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:2.5rem;letter-spacing:2px;color:#ff3b3b;margin-bottom:0.5rem;">WEEKLY LIMIT REACHED</div>
-        <div style="color:#666;font-size:0.95rem;margin-bottom:1rem;">You've used all {FREE_LIMIT} free analyses this week. Your limit resets Monday.</div>
-        <div style="background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:1rem;display:inline-block;">
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:2px;color:#ff3b3b;">UPGRADE TO PRO — $9.99/mo</div>
-            <div style="font-size:0.8rem;color:#555;margin-top:0.3rem;">Unlimited analyses + progress tracking + priority support</div>
-            <div style="font-size:0.75rem;color:#333;margin-top:0.5rem;">Email: trackformai@gmail.com</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.error("🚫 Weekly free limit reached. Upgrade to Pro for unlimited analyses.")
     st.stop()
 
-# ── EVENT SELECTOR ────────────────────────────────────────────────────────────
-
+# Event Selector
 EVENT_OPTIONS = {
-    "⚡  Sprint / Block Start": "sprint",
-    "🏋️  Shot Put":             "shot_put",
-    "💿  Discus":               "discus",
-    "🏹  Javelin":              "javelin",
+    "⚡ Sprint / Block Start": "sprint",
+    "🏋️ Shot Put": "shot_put",
+    "💿 Discus": "discus",
+    "🏹 Javelin": "javelin"
 }
-
-st.markdown('<div style="font-size:0.7rem;letter-spacing:3px;text-transform:uppercase;color:#444;margin-bottom:0.6rem;">SELECT YOUR EVENT</div>', unsafe_allow_html=True)
-selected_label = st.selectbox(
-    label="event_selector",
-    options=list(EVENT_OPTIONS.keys()),
-    index=0,
-    label_visibility="collapsed",
-)
+selected_label = st.selectbox("", list(EVENT_OPTIONS.keys()), label_visibility="collapsed")
 selected_event = EVENT_OPTIONS[selected_label]
 
-st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
-
-# ── FILE UPLOADER ─────────────────────────────────────────────────────────────
-
+# Video Upload
 uploaded_file = st.file_uploader(
     "Drop your video here — side view works best",
-    type=['mp4', 'mov', 'avi', 'mkv', 'webm'],
+    type=["mp4", "mov", "avi", "mkv", "webm"]
 )
 
-if uploaded_file is not None:
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+if uploaded_file and st.button("⚡ ANALYZE MY TECHNIQUE", type="primary", use_container_width=True):
+    # Save to temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
         tmp.write(uploaded_file.read())
         video_path = tmp.name
 
-    col_vid, col_tip = st.columns([2, 1])
-    with col_vid:
-        st.video(uploaded_file)
-    with col_tip:
-        st.markdown("""
-        <div class="tip-box">
-            <strong>📐 Best results:</strong><br>
-            · Side / profile view<br>
-            · Full body in frame<br>
-            · Good lighting<br>
-            · 5–10 seconds is plenty
-        </div>
-        """, unsafe_allow_html=True)
-        if tier == "free":
+    try:
+        with st.spinner("🔍 Analyzing your technique... (10-30 seconds)"):
+            extractor = PoseExtractor()
+            poses, fps = extractor.extract_from_video(video_path, event=selected_event)
+
+            judge = TechniqueJudge()
+            results = judge.analyze(poses, event=selected_event, fps=fps)
+
+        increment_usage(user_id)
+        save_analysis(user_id, selected_event, results, video_path)
+
+        st.success("✅ Analysis Complete!")
+
+        # Results Display
+        col1, col2 = st.columns(2)
+        with col1:
+            score = results.get("overall_score", 0)
+            color = "#3bff3b" if score >= 80 else "#ffaa3b" if score >= 60 else "#ff3b3b"
             st.markdown(f"""
-            <div style="background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:0.8rem;margin-top:0.8rem;">
-                <div style="font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;color:#444;">THIS WEEK</div>
-                <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:#fff;">{remaining} left</div>
-                <div style="font-size:0.72rem;color:#444;">of {FREE_LIMIT} free analyses</div>
+            <div style="background:#111;border:1px solid #1e1e1e;border-radius:16px;padding:2.5rem 2rem;text-align:center;">
+                <div style="font-size:1.4rem;color:#ff3b3b;">{selected_event.replace('_', ' ').upper()}</div>
+                <div style="font-size:6.5rem;font-family:'Bebas Neue',sans-serif;color:{color};">{score}</div>
+                <div style="font-size:0.95rem;letter-spacing:2px;color:#666;">OVERALL SCORE</div>
             </div>
             """, unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
+        with col2:
+            st.subheader("Key Metrics")
+            for k, v in results.get("metrics", {}).items():
+                st.metric(k.replace("_", " ").title(), f"{v:.1f}/10")
 
-    if st.button("⚡  ANALYZE MY TECHNIQUE"):
-        progress_bar = st.progress(0)
-        status = st.empty()
+        if results.get("drills"):
+            st.subheader("💡 Recommended Drills")
+            for drill in results["drills"]:
+                st.markdown(f"• {drill}")
 
-        try:
-            status.markdown('<div style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">Step 1 / 3 — Tracking body positions...</div>', unsafe_allow_html=True)
-            progress_bar.progress(20)
+        st.download_button(
+            "↓ Download Full Report",
+            data=json.dumps(results, indent=2),
+            file_name=f"trackform_{selected_event}_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+            mime="application/json"
+        )
 
-            extractor = PoseExtractor()
-            pose_data = extractor.extract_from_video(video_path, sample_every=2)
-
-            if pose_data['poses_extracted'] < 5:
-                st.error("Couldn't detect a body clearly. Try better lighting or a cleaner side view.")
-                st.stop()
-
-            status.markdown('<div style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">Step 2 / 3 — Verifying pose data...</div>', unsafe_allow_html=True)
-            progress_bar.progress(50)
-
-            event_type = selected_event
-
-            classifier = EventClassifier()
-            classification = classifier.classify(pose_data)
-            classification['event'] = event_type
-            confidence = classification['all_scores'].get(event_type, 0.8)
-
-            status.markdown('<div style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;">Step 3 / 3 — Judging technique...</div>', unsafe_allow_html=True)
-            progress_bar.progress(80)
-
-            judge = TechniqueJudge(event_type)
-            analysis = judge.analyze(pose_data)
-            analysis['overall_score'] = max(1, min(100, round(float(analysis['overall_score']))))
-
-            increment_usage(user_id)
-            save_analysis(
-                user_id, event_type, analysis['overall_score'],
-                analysis['errors'], analysis['recommended_drills'], analysis['metrics']
-            )
-
-            progress_bar.progress(100)
-            status.empty()
-
-            st.markdown('<div class="section-header">ANALYSIS RESULTS</div>', unsafe_allow_html=True)
-
-            score = analysis['overall_score']
-            score_color = "#22c55e" if score >= 80 else "#f59e0b" if score >= 60 else "#ff3b3b"
-
-            col_score, col_event, col_errors = st.columns(3)
-
-            with col_score:
-                st.markdown(f"""
-                <div class="score-card">
-                    <div class="score-number" style="color:{score_color};">{score}</div>
-                    <div class="score-label">Technique Score / 100</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col_event:
-                bar_width = min(100, max(0, int(confidence * 100)))
-                st.markdown(f"""
-                <div class="score-card">
-                    <div class="event-badge">{event_type.replace('_',' ').upper()}</div>
-                    <div class="score-label">Selected Event</div>
-                    <div class="confidence-bar-wrap">
-                        <div class="confidence-bar-fill" style="width:{bar_width}%;"></div>
-                    </div>
-                    <div style="font-size:0.75rem;color:#444;margin-top:0.4rem;">{bar_width}% pose match</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col_errors:
-                st.markdown(f"""
-                <div class="score-card">
-                    <div class="score-number" style="color:#fff;">{analysis['errors_found']}</div>
-                    <div class="score-label">Issues Found</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            st.markdown(f'<div class="summary-box" style="margin-top:1rem;">{analysis["summary"]}</div>', unsafe_allow_html=True)
-
-            if analysis['errors']:
-                st.markdown('<div class="section-header">ISSUES IDENTIFIED</div>', unsafe_allow_html=True)
-                severity_colors = {'high': 'error-high', 'medium': 'error-medium', 'low': 'error-low'}
-                severity_labels = {'high': '🔴 HIGH', 'medium': '🟡 MEDIUM', 'low': '🟢 LOW'}
-                for i, error in enumerate(analysis['errors'], 1):
-                    css_class  = severity_colors.get(error['severity'], 'error-medium')
-                    sev_label  = severity_labels.get(error['severity'], error['severity'].upper())
-                    drills_html = ''.join([f'<span class="drill-pill">{d}</span>' for d in error.get('drills', [])])
-                    st.markdown(f"""
-                    <div class="{css_class}">
-                        <div class="error-title">{i}. {error['description']}</div>
-                        <div class="error-meta">{sev_label} &nbsp;·&nbsp; Yours: <strong style="color:#ccc;">{error['your_value']}</strong> &nbsp;·&nbsp; Elite: <strong style="color:#ccc;">{error['ideal_value']}</strong></div>
-                        <div class="error-fix">💡 {error['fix']}</div>
-                        <div style="margin-top:0.6rem;">{drills_html}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-            if analysis['recommended_drills']:
-                st.markdown('<div class="section-header">RECOMMENDED DRILLS</div>', unsafe_allow_html=True)
-                drills_html = ''.join([f'<span class="drill-pill" style="font-size:0.9rem;padding:0.5rem 1.1rem;">{d}</span>' for d in analysis['recommended_drills']])
-                st.markdown(f"""
-                <div style="background:#111;border:1px solid #1e1e1e;border-radius:12px;padding:1.5rem;">
-                    {drills_html}
-                    <div style="margin-top:1rem;font-size:0.8rem;color:#444;letter-spacing:1px;">
-                        3 sets · 6–8 reps · focus on form over speed · re-film after 2 weeks
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with st.expander("Technical details"):
-                st.json({'metrics': analysis['metrics'], 'phases': analysis['phases_detected'][:10], 'all_scores': classification['all_scores']})
-
-            report = {
-                'event': event_type,
-                'score': analysis['overall_score'],
-                'errors': analysis['errors'],
-                'drills': analysis['recommended_drills'],
-                'metrics': analysis['metrics']
-            }
-            st.download_button(
-                "↓ Download report (JSON)",
-                data=json.dumps(report, indent=2),
-                file_name=f"trackform_{event_type}.json",
-                mime="application/json"
-            )
-
-        except Exception as e:
-            st.error(f"Analysis error: {str(e)}")
-            st.exception(e)
+    except Exception as e:
+        st.error(f"Analysis failed: {str(e)}")
+    finally:
+        if os.path.exists(video_path):
+            os.unlink(video_path)
 
 else:
-    st.markdown("""
-    <div style="text-align:center;padding:4rem 2rem;color:#333;">
-        <div style="font-size:4rem;">⚡</div>
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:2.5rem;letter-spacing:2px;color:#2a2a2a;">UPLOAD A VIDEO TO START</div>
-        <div style="font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;color:#2a2a2a;">Sprint · Shot · Discus · Javelin</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown('<div style="margin-top:3rem;font-size:0.7rem;color:#1e1e1e;letter-spacing:2px;text-align:center;">TRACKFORM AI · MEDIAPIPE + STREAMLIT · FREE & OPEN SOURCE</div>', unsafe_allow_html=True)
+    st.info("Upload a video to begin analysis")
