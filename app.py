@@ -123,20 +123,23 @@ FREE_LIMIT = 5
 if "sidebar_open" not in st.session_state:
     st.session_state["sidebar_open"] = True
 
+# Toggle button sits in the top-left of the main content area
+toggle_col, _ = st.columns([1, 20])
+with toggle_col:
+    st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
+    icon = "✕" if st.session_state["sidebar_open"] else "☰"
+    if st.button(icon, key="sidebar_toggle"):
+        st.session_state["sidebar_open"] = not st.session_state["sidebar_open"]
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Collapse/expand sidebar via CSS injection
 if not st.session_state["sidebar_open"]:
     st.markdown("""
     <style>
     [data-testid="stSidebar"] { display: none !important; }
-    section[data-testid="stSidebarCollapsedControl"] { display: none !important; }
     </style>
     """, unsafe_allow_html=True)
-
-icon = "☰" if not st.session_state["sidebar_open"] else "✕"
-st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
-if st.button(icon, key="sidebar_toggle"):
-    st.session_state["sidebar_open"] = not st.session_state["sidebar_open"]
-    st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
 
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 
