@@ -73,38 +73,33 @@ def show_login_page():
 
         tab1, tab2 = st.tabs(["Sign In", "Create Account"])
 
-        # ── SIGN IN ───────────────────────────────────────────────────────────
+              # ── SIGN IN ───────────────────────────────────────────────────────────
         with tab1:
-            st.markdown("<br>", unsafe_allow_html=True)
-            email    = st.text_input("Email Address", key="login_email", placeholder="you@email.com")
-            password = st.text_input("Password", type="password", key="login_password", placeholder="Enter your password")
-
-            if st.button("SIGN IN", key="btn_login", use_container_width=True):
+           if st.button("SIGN IN", key="btn_login", use_container_width=True):
                 if not email or not password:
                     st.error("Please enter both email and password.")
                 else:
                     with st.spinner("Signing in..."):
                         result = sign_in(email, password)
-                        if result.get("success"):
-                            st.session_state["user"] = result["user"]
-                            st.rerun()
-                        else:
-                            error = result.get("error", "")
-                            if "not confirmed" in error.lower():
-                                st.error("Please confirm your email first. Check your inbox for a confirmation link.")
+                    if result.get("success"):
+                        st.session_state["user"] = result["user"]
+                        st.rerun()
                     else:
-                        st.error("Invalid email or password.")
-                        st.markdown("---")
-
-        # Forgot password
-        st.markdown("### Forgot your password?")
-        reset_email = st.text_input("Enter your email address", key="reset_email", placeholder="you@email.com")
-        if st.button("SEND RESET LINK", key="btn_reset"):
-            if reset_email:
-                reset_password(reset_email)
-                st.success("If that email is registered, a reset link has been sent. Check your inbox.")
-            else:
-                st.error("Please enter your email address.")
+                        error = result.get("error", "")
+                        if "not confirmed" in error.lower():
+                            st.error("Please confirm your email first. Check your inbox for a confirmation link.")
+                        else:
+                            st.error("Invalid email or password.")
+            # ── Forgot Password (Added - Minimal) ─────────────────────────────
+            st.markdown("---")
+            st.markdown("**Forgot your password?**")
+            reset_email = st.text_input("Enter your email address", key="reset_email", placeholder="you@email.com")
+            if st.button("SEND RESET LINK", key="btn_reset"):
+                if reset_email:
+                    reset_password(reset_email)
+                    st.success("If that email is registered, a reset link has been sent. Check your inbox.")
+                else:
+                    st.error("Please enter your email address.")
 
         # ── SIGN UP ───────────────────────────────────────────────────────────
         with tab2:
