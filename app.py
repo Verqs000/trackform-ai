@@ -132,7 +132,7 @@ html, body, [class*="css"] {
 # AUTH
 # =============================================================================
 if "user" not in st.session_state:
-    show_login_page()
+    login_page.show_login_page()
     st.stop()
 
 user = st.session_state["user"]
@@ -241,7 +241,7 @@ if st.session_state.page != "analyze":
     elif st.session_state.page == "leaderboard":
         show_leaderboard_page(user)
     elif st.session_state.page == "coach":
-        show_coach_page(user)
+        coach_page.show_coach_page(user)
     st.stop()
 
 # =============================================================================
