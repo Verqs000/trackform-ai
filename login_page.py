@@ -3,17 +3,100 @@ login_page.py - Login & Signup with Stripe Integration
 """
 
 import streamlit as st
-from auth import sign_in, sign_up, create_stripe_checkout, upgrade_tier, reset_password
+import requests
+from auth import (
+    sign_in, sign_up, create_stripe_checkout,
+    upgrade_tier, reset_password,
+    SUPABASE_URL, SUPABASE_ANON_KEY
+)
 
 STRIPE_PRICES = {
     "pro":   "price_1TJlDZFSa4OLK6hEpZDb8tNl",
     "coach": "price_1TJlGMFSa4OLK6hEaBXB4bQp",
 }
 
+CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
+html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background: #0a0a0a; color: #e8e8e8; }
+.stApp { background: #0a0a0a; }
+#MainMenu, footer, header { visibility: hidden; }
+.stTextInput > div > div > input {
+    background: #111 !important;
+    border: 1px solid #2a2a2a !important;
+    border-radius: 8px !important;
+    color: #e8e8e8 !important;
+    padding: 0.75rem 1rem !important;
+}
+.stTextInput > div > div > input:focus { border-color: #ff3b3b !important; }
+.stButton > button {
+    background: #ff3b3b !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-family: 'Bebas Neue', sans-serif !important;
+    font-size: 1.25rem !important;
+    letter-spacing: 2px !important;
+    padding: 0.75rem !important;
+    width: 100% !important;
+    margin-top: 0.5rem !important;
+}
+.stButton > button:hover { background: #e02e2e !important; }
+.plan-card {
+    background: #111;
+    border: 2px solid #1e1e1e;
+    border-radius: 12px;
+    padding: 1.2rem 0.8rem;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+.plan-card.selected {
+    border-color: #ff3b3b;
+    box-shadow: 0 0 0 3px rgba(255,59,59,0.15);
+}
+</style>
+"""
+
 
 def show_login_page():
-    # Handle Stripe redirect
+    st.markdown(CSS, unsafe_allow_html=True)
+
+    # ── HANDLE PASSWORD RESET REDIRECT ────────────────────────────────────────
     params = st.query_params
+    if params.get("type") == "recovery":
+        access_token = params.get("access_token", "")
+        _, col, _ = st.columns([1, 2, 1])
+        with col:
+            st.markdown('<div style="font-family:\'Bebas Neue\',sans-serif;font-size:4.2rem;letter-spacing:3px;color:#fff;text-align:center;">TRACK<span style="color:#ff3b3b;">FORM</span></div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size:0.78rem;letter-spacing:3px;text-transform:uppercase;color:#666;text-align:center;margin-bottom:2rem;">AI TECHNIQUE COACH</div>', unsafe_allow_html=True)
+            st.markdown("### 🔑 Reset Your Password")
+            new_pass     = st.text_input("New Password", type="password", key="new_pass")
+            confirm_pass = st.text_input("Confirm New Password", type="password", key="confirm_pass")
+            if st.button("UPDATE PASSWORD", use_container_width=True):
+                if not new_pass or not confirm_pass:
+                    st.error("Please fill in both fields.")
+                elif new_pass != confirm_pass:
+                    st.error("Passwords do not match.")
+                elif len(new_pass) < 6:
+                    st.error("Password must be at least 6 characters.")
+                else:
+                    res = requests.post(
+                        f"{SUPABASE_URL}/auth/v1/user",
+                        headers={
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": f"Bearer {access_token}",
+                            "Content-Type": "application/json"
+                        },
+                        json={"password": new_pass}
+                    )
+                    if res.status_code == 200:
+                        st.success("✅ Password updated! You can now sign in.")
+                        st.query_params.clear()
+                    else:
+                        st.error("Failed to update password. Try requesting a new reset link.")
+        st.stop()
+
+    # ── HANDLE STRIPE REDIRECT ────────────────────────────────────────────────
     if params.get("payment") == "success":
         uid  = params.get("uid", "")
         tier = params.get("tier", "")
@@ -23,49 +106,7 @@ def show_login_page():
             st.success(f"🎉 Payment successful! Your account is now {tier.upper()}. Please sign in below.")
             st.rerun()
 
-    # CSS
-    st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
-    html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background: #0a0a0a; color: #e8e8e8; }
-    .stApp { background: #0a0a0a; }
-    #MainMenu, footer, header { visibility: hidden; }
-    .stTextInput > div > div > input {
-        background: #111 !important;
-        border: 1px solid #2a2a2a !important;
-        border-radius: 8px !important;
-        color: #e8e8e8 !important;
-        padding: 0.75rem 1rem !important;
-    }
-    .stTextInput > div > div > input:focus { border-color: #ff3b3b !important; }
-    .stButton > button {
-        background: #ff3b3b !important;
-        color: #fff !important;
-        border: none !important;
-        border-radius: 8px !important;
-        font-family: 'Bebas Neue', sans-serif !important;
-        font-size: 1.25rem !important;
-        letter-spacing: 2px !important;
-        padding: 0.75rem !important;
-        width: 100% !important;
-        margin-top: 0.5rem !important;
-    }
-    .stButton > button:hover { background: #e02e2e !important; }
-    .plan-card {
-        background: #111;
-        border: 2px solid #1e1e1e;
-        border-radius: 12px;
-        padding: 1.2rem 0.8rem;
-        text-align: center;
-        transition: all 0.2s ease;
-    }
-    .plan-card.selected {
-        border-color: #ff3b3b;
-        box-shadow: 0 0 0 3px rgba(255,59,59,0.15);
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
+    # ── MAIN LOGIN UI ─────────────────────────────────────────────────────────
     _, col, _ = st.columns([1, 2, 1])
     with col:
         st.markdown('<div style="font-family:\'Bebas Neue\',sans-serif;font-size:4.2rem;letter-spacing:3px;color:#fff;text-align:center;">TRACK<span style="color:#ff3b3b;">FORM</span></div>', unsafe_allow_html=True)
@@ -95,11 +136,11 @@ def show_login_page():
                         else:
                             st.error("Invalid email or password.")
 
-            # ── Forgot Password ────────────────────────────────────────────────
+            # ── FORGOT PASSWORD ────────────────────────────────────────────────
             st.markdown("---")
             st.markdown("**Forgot your password?**")
             reset_email = st.text_input("Enter your email address", key="reset_email", placeholder="you@email.com")
-            if st.button("SEND RESET LINK", key="btn_reset"):
+            if st.button("SEND RESET LINK", key="btn_reset", use_container_width=True):
                 if reset_email:
                     reset_password(reset_email)
                     st.success("If that email is registered, a reset link has been sent. Check your inbox.")
@@ -109,7 +150,6 @@ def show_login_page():
         # ── SIGN UP ───────────────────────────────────────────────────────────
         with tab2:
             st.markdown("<br>", unsafe_allow_html=True)
-
             st.markdown('<div style="font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;color:#666;margin-bottom:0.8rem;">CHOOSE YOUR PLAN</div>', unsafe_allow_html=True)
 
             if "selected_plan" not in st.session_state:
@@ -206,7 +246,6 @@ def show_login_page():
                         else:
                             st.error(f"Signup failed: {err}")
 
-            # ToS link
             st.markdown("""
             <div style="font-size:0.72rem;color:#444;text-align:center;margin-top:1.2rem;">
                 By creating an account you agree to our
