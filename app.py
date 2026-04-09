@@ -214,40 +214,40 @@ if st.session_state.sidebar_open:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            if st.button("⚡ Upgrade to PRO — $9.99/mo", key="upgrade_pro", use_container_width=True):
-                with st.spinner("Creating checkout..."):
-                    checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["pro"], "pro")
-                    if checkout.get("success") and checkout.get("url"):
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={checkout["url"]}">', unsafe_allow_html=True)
-                    else:
-                        st.error("Could not create checkout. Try again.")
-
-            if st.button("🏆 Upgrade to COACH — $29.99/mo", key="upgrade_coach", use_container_width=True):
-                with st.spinner("Creating checkout..."):
-                    checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["coach"], "coach")
-                    if checkout.get("success") and checkout.get("url"):
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={checkout["url"]}">', unsafe_allow_html=True)
-                    else:
-                        st.error("Could not create checkout. Try again.")
-
-        elif tier == "pro":
-            st.success("✅ PRO Plan — Unlimited")
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🏆 Upgrade to COACH — $29.99/mo", key="upgrade_coach", use_container_width=True):
-                with st.spinner("Creating checkout..."):
-                    checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["coach"], "coach")
-                    if checkout.get("success") and checkout.get("url"):
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={checkout["url"]}">', unsafe_allow_html=True)
-                    else:
-                        st.error("Could not create checkout. Try again.")
-
+    if st.button("⚡ Upgrade to PRO — $9.99/mo", key="upgrade_pro", use_container_width=True):
+        with st.spinner("Creating checkout..."):
+            checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["pro"], "pro")
+        if checkout.get("success") and checkout.get("url"):
+            st.link_button("👉 Click here to complete payment", checkout["url"])
         else:
-            st.success("✅ COACH Plan — Unlimited")
+            st.error(f"Could not create checkout: {checkout.get('error', 'Unknown error')}")
 
-        st.divider()
-        if st.button("🚪 Sign Out", use_container_width=True):
-            sign_out()
-            st.rerun()
+    if st.button("🏆 Upgrade to COACH — $29.99/mo", key="upgrade_coach", use_container_width=True):
+        with st.spinner("Creating checkout..."):
+            checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["coach"], "coach")
+        if checkout.get("success") and checkout.get("url"):
+            st.link_button("👉 Click here to complete payment", checkout["url"])
+        else:
+            st.error(f"Could not create checkout: {checkout.get('error', 'Unknown error')}")
+
+elif tier == "pro":
+    st.success("✅ PRO Plan — Unlimited")
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🏆 Upgrade to COACH — $29.99/mo", key="upgrade_coach_pro", use_container_width=True):
+        with st.spinner("Creating checkout..."):
+            checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["coach"], "coach")
+        if checkout.get("success") and checkout.get("url"):
+            st.link_button("👉 Click here to complete payment", checkout["url"])
+        else:
+            st.error(f"Could not create checkout: {checkout.get('error', 'Unknown error')}")
+
+elif tier == "coach":
+    st.success("✅ COACH Plan — Unlimited")
+
+st.divider()
+if st.button("🚪 Sign Out", use_container_width=True):
+    sign_out()
+    st.rerun()
 
 # =============================================================================
 # HAMBURGER TOGGLE
