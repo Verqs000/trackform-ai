@@ -92,19 +92,19 @@ def show_login_page():
                             error = result.get("error", "")
                             if "not confirmed" in error.lower():
                                 st.error("Please confirm your email first. Check your inbox for a confirmation link.")
-                            else:
-                                st.error("Invalid email or password.")
-
-            # Forgot password
-            with st.expander("Forgot your password?"):
-                reset_email = st.text_input("Enter your email address", key="reset_email", placeholder="you@email.com")
-                if st.button("SEND RESET LINK", key="btn_reset"):
-                    if reset_email:
-                        reset_password(reset_email)
-                        # Always show success — don't reveal if email exists
-                        st.success("If that email is registered, a reset link has been sent. Check your inbox.")
                     else:
-                        st.error("Please enter your email address.")
+                        st.error("Invalid email or password.")
+                        st.markdown("---")
+
+        # Forgot password
+        st.markdown("### Forgot your password?")
+        reset_email = st.text_input("Enter your email address", key="reset_email", placeholder="you@email.com")
+        if st.button("SEND RESET LINK", key="btn_reset"):
+            if reset_email:
+                reset_password(reset_email)
+                st.success("If that email is registered, a reset link has been sent. Check your inbox.")
+            else:
+                st.error("Please enter your email address.")
 
         # ── SIGN UP ───────────────────────────────────────────────────────────
         with tab2:
