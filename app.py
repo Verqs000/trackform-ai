@@ -132,7 +132,7 @@ html, body, [class*="css"] {
 # AUTH
 # =============================================================================
 if "user" not in st.session_state:
-    login_page.show_login_page()
+    show_login_page()
     st.stop()
 
 user = st.session_state["user"]
