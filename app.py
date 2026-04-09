@@ -241,7 +241,7 @@ if st.session_state.page != "analyze":
     elif st.session_state.page == "leaderboard":
         show_leaderboard_page(user)
     elif st.session_state.page == "coach":
-        coach_page.show_coach_page(user)
+        show_coach_page(user)
     st.stop()
 
 # =============================================================================
