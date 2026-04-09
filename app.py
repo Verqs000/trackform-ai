@@ -16,18 +16,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from models.pose_extractor import PoseExtractor
 from models.technique_judge import TechniqueJudge
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from auth import (
     can_analyze, increment_usage, save_analysis,
-    get_tier, get_usage_this_week, sign_out, handle_stripe_success
+    get_tier, get_usage_this_week, sign_out, handle_stripe_success,
+    create_stripe_checkout
 )
 from login_page import show_login_page
 from coach_page import show_coach_page
 from progress_page import show_progress_page
-from leaderboard_page import show_leaderboard_page
 from leaderboard_page import show_leaderboard_page
 
 # =============================================================================
@@ -39,6 +36,10 @@ ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-msvideo", "video
 ALLOWED_EXTENSIONS = [".mp4", ".mov", ".avi", ".mkv", ".webm"]
 FREE_LIMIT = 5
 ANALYSIS_TIMEOUT_SECONDS = 120
+STRIPE_PRICES = {
+    "pro":   "price_1TJlDZFSa4OLK6hEpZDb8tNl",
+    "coach": "price_1TJlGMFSa4OLK6hEaBXB4bQp",
+}
 
 # =============================================================================
 # PAGE CONFIG
@@ -166,7 +167,6 @@ if params.get("payment") == "success":
 tier = get_tier(user_id)
 used_this_week = get_usage_this_week(user_id)
 can_go, remaining = can_analyze(user_id)
-FREE_LIMIT = 5
 
 # =============================================================================
 # SIDEBAR
@@ -199,6 +199,7 @@ if st.session_state.sidebar_open:
 
         st.divider()
 
+        # ── USAGE & UPGRADE ───────────────────────────────────────────────────
         if tier == "free":
             pct = min(int((used_this_week / FREE_LIMIT) * 100), 100)
             st.markdown(f"""
@@ -210,8 +211,38 @@ if st.session_state.sidebar_open:
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if st.button("⚡ Upgrade to PRO — $9.99/mo", key="upgrade_pro", use_container_width=True):
+                with st.spinner("Creating checkout..."):
+                    checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["pro"], "pro")
+                    if checkout.get("success") and checkout.get("url"):
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={checkout["url"]}">', unsafe_allow_html=True)
+                    else:
+                        st.error("Could not create checkout. Try again.")
+
+            if st.button("🏆 Upgrade to COACH — $29.99/mo", key="upgrade_coach", use_container_width=True):
+                with st.spinner("Creating checkout..."):
+                    checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["coach"], "coach")
+                    if checkout.get("success") and checkout.get("url"):
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={checkout["url"]}">', unsafe_allow_html=True)
+                    else:
+                        st.error("Could not create checkout. Try again.")
+
+        elif tier == "pro":
+            st.success("✅ PRO Plan — Unlimited")
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🏆 Upgrade to COACH — $29.99/mo", key="upgrade_coach", use_container_width=True):
+                with st.spinner("Creating checkout..."):
+                    checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["coach"], "coach")
+                    if checkout.get("success") and checkout.get("url"):
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={checkout["url"]}">', unsafe_allow_html=True)
+                    else:
+                        st.error("Could not create checkout. Try again.")
+
         else:
-            st.success(f"✅ {tier.upper()} Plan — Unlimited")
+            st.success("✅ COACH Plan — Unlimited")
 
         st.divider()
         if st.button("🚪 Sign Out", use_container_width=True):
@@ -271,7 +302,6 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file and st.button("⚡ ANALYZE MY TECHNIQUE", type="primary", use_container_width=True):
-    # Save to temp file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
         tmp.write(uploaded_file.read())
         video_path = tmp.name
