@@ -76,6 +76,18 @@ def sign_out():
         st.session_state.pop(key, None)
 
 
+def reset_password(email: str) -> dict:
+    try:
+        res = requests.post(
+            f"{SUPABASE_URL}/auth/v1/recover",
+            headers=ANON_HEADERS,
+            json={"email": email}
+        )
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def _ensure_profile(user_id: str, email: str):
     try:
         res = requests.get(
@@ -127,10 +139,9 @@ def upgrade_tier(user_id: str, new_tier: str) -> bool:
 # ── STRIPE ────────────────────────────────────────────────────────────────────
 
 def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: str) -> dict:
-    """Create a Stripe checkout session and return the URL."""
     try:
         import stripe
-        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+        stripe.api_key = st.secrets["stripe"]["secret_key"]
 
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -147,7 +158,6 @@ def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: s
 
 
 def handle_stripe_success(user_id: str, tier: str):
-    """Called when user returns from successful Stripe payment."""
     upgrade_tier(user_id, tier)
 
 
@@ -260,25 +270,20 @@ def create_team(coach_id: str, team_name: str) -> dict:
 
 def delete_team(team_id: str, coach_id: str) -> dict:
     try:
-        # Verify ownership first
         res = requests.get(
             f"{SUPABASE_URL}/rest/v1/teams?id=eq.{team_id}&coach_id=eq.{coach_id}",
             headers=ADMIN_HEADERS
         )
         if res.status_code != 200 or not res.json():
             return {"success": False, "error": "Team not found or not authorized."}
-
-        # Delete members first
         requests.delete(
             f"{SUPABASE_URL}/rest/v1/team_members?team_id=eq.{team_id}",
             headers=ADMIN_HEADERS
         )
-        # Delete invites
         requests.delete(
             f"{SUPABASE_URL}/rest/v1/team_invites?team_id=eq.{team_id}",
             headers=ADMIN_HEADERS
         )
-        # Delete team
         del_res = requests.delete(
             f"{SUPABASE_URL}/rest/v1/teams?id=eq.{team_id}",
             headers=ADMIN_HEADERS
@@ -363,9 +368,7 @@ def get_team_analyses(team_id: str) -> list:
 # ── TEAM INVITES ──────────────────────────────────────────────────────────────
 
 def invite_athlete_to_team(team_id: str, coach_id: str, athlete_email: str) -> dict:
-    """Send an invite — creates a pending team_invites row instead of directly adding."""
     try:
-        # Look up athlete by email
         res = requests.get(
             f"{SUPABASE_URL}/rest/v1/profiles?email=eq.{athlete_email}&select=id,email",
             headers=ADMIN_HEADERS
@@ -375,7 +378,6 @@ def invite_athlete_to_team(team_id: str, coach_id: str, athlete_email: str) -> d
 
         athlete_id = res.json()[0]["id"]
 
-        # Check already a member
         check = requests.get(
             f"{SUPABASE_URL}/rest/v1/team_members?team_id=eq.{team_id}&athlete_id=eq.{athlete_id}",
             headers=ADMIN_HEADERS
@@ -383,7 +385,6 @@ def invite_athlete_to_team(team_id: str, coach_id: str, athlete_email: str) -> d
         if check.status_code == 200 and check.json():
             return {"success": False, "error": "Athlete is already on this team."}
 
-        # Check already has pending invite
         invite_check = requests.get(
             f"{SUPABASE_URL}/rest/v1/team_invites?team_id=eq.{team_id}&athlete_id=eq.{athlete_id}&status=eq.pending",
             headers=ADMIN_HEADERS
@@ -391,7 +392,6 @@ def invite_athlete_to_team(team_id: str, coach_id: str, athlete_email: str) -> d
         if invite_check.status_code == 200 and invite_check.json():
             return {"success": False, "error": "Invite already sent and pending."}
 
-        # Create invite
         invite_res = requests.post(
             f"{SUPABASE_URL}/rest/v1/team_invites",
             headers=ADMIN_HEADERS,
@@ -410,7 +410,6 @@ def invite_athlete_to_team(team_id: str, coach_id: str, athlete_email: str) -> d
 
 
 def get_pending_invites(athlete_id: str) -> list:
-    """Get all pending invites for an athlete with team + coach info."""
     try:
         res = requests.get(
             f"{SUPABASE_URL}/rest/v1/team_invites?athlete_id=eq.{athlete_id}&status=eq.pending",
@@ -420,14 +419,12 @@ def get_pending_invites(athlete_id: str) -> list:
             invites = res.json()
             enriched = []
             for inv in invites:
-                # Get team name
                 team_res = requests.get(
                     f"{SUPABASE_URL}/rest/v1/teams?id=eq.{inv['team_id']}&select=name",
                     headers=ADMIN_HEADERS
                 )
                 team_name = team_res.json()[0]["name"] if team_res.status_code == 200 and team_res.json() else "Unknown Team"
 
-                # Get coach email
                 coach_res = requests.get(
                     f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{inv['coach_id']}&select=email",
                     headers=ADMIN_HEADERS
@@ -444,9 +441,7 @@ def get_pending_invites(athlete_id: str) -> list:
 
 
 def respond_to_invite(invite_id: str, athlete_id: str, accept: bool) -> dict:
-    """Accept or decline an invite. If accepted, adds to team_members."""
     try:
-        # Get invite to verify ownership
         res = requests.get(
             f"{SUPABASE_URL}/rest/v1/team_invites?id=eq.{invite_id}&athlete_id=eq.{athlete_id}",
             headers=ADMIN_HEADERS
@@ -457,14 +452,12 @@ def respond_to_invite(invite_id: str, athlete_id: str, accept: bool) -> dict:
         invite = res.json()[0]
         new_status = "accepted" if accept else "declined"
 
-        # Update invite status
         requests.patch(
             f"{SUPABASE_URL}/rest/v1/team_invites?id=eq.{invite_id}",
             headers=ADMIN_HEADERS,
             json={"status": new_status}
         )
 
-        # If accepted, add to team_members
         if accept:
             requests.post(
                 f"{SUPABASE_URL}/rest/v1/team_members",
@@ -478,7 +471,6 @@ def respond_to_invite(invite_id: str, athlete_id: str, accept: bool) -> dict:
 
 
 def add_athlete_to_team(team_id: str, athlete_email: str) -> dict:
-    """Legacy direct-add kept for backwards compat — now just calls invite."""
     try:
         res = requests.get(
             f"{SUPABASE_URL}/rest/v1/profiles?email=eq.{athlete_email}&select=id",
