@@ -16,6 +16,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from models.pose_extractor import PoseExtractor
 from models.technique_judge import TechniqueJudge
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from auth import (
     can_analyze, increment_usage, save_analysis,
     get_tier, get_usage_this_week, sign_out, handle_stripe_success
@@ -23,6 +27,7 @@ from auth import (
 from login_page import show_login_page
 from coach_page import show_coach_page
 from progress_page import show_progress_page
+from leaderboard_page import show_leaderboard_page
 from leaderboard_page import show_leaderboard_page
 
 # =============================================================================
