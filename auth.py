@@ -53,15 +53,12 @@ def sign_up(email: str, password: str) -> dict:
 
 
 def sign_up_and_get_user(email: str, password: str) -> dict:
-    """Sign up and return the user_id directly from the signup response.
-    This avoids needing to sign in after signup (which fails if email confirmation is on)."""
     url = f"{SUPABASE_URL}/auth/v1/signup"
     try:
         res = requests.post(url, headers=ANON_HEADERS, json={"email": email, "password": password})
         data = res.json()
         print(f"[SignUp] status: {res.status_code}, data keys: {list(data.keys())}")
 
-        # Supabase returns user_id in different places depending on confirmation settings
         user_id = (
             data.get("id") or
             (data.get("user") or {}).get("id") or
@@ -87,9 +84,12 @@ def sign_in(email: str, password: str) -> dict:
         user_data = data.get("user") or data
         user_id = user_data.get("id")
         user_email = user_data.get("email")
+        access_token = data.get("access_token")
         if res.status_code == 200 and user_id:
             user = SimpleUser(user_id, user_email)
             _ensure_profile(user_id, user_email)
+            # Store access token so password update works later
+            st.session_state["access_token"] = access_token
             return {"success": True, "user": user}
         else:
             msg = data.get("error_description") or data.get("msg") or data.get("message") or "Invalid email or password"
@@ -104,13 +104,128 @@ def sign_out():
 
 
 def reset_password(email: str) -> dict:
+    """
+    Sends a password reset email. The redirect_to must match exactly what you
+    have set in Supabase > Auth > URL Configuration > Redirect URLs.
+    The reset link will land on your app with ?type=recovery&token_hash=...
+    which the login_page handles via the exchange_recovery_token() flow.
+    """
     try:
         res = requests.post(
             f"{SUPABASE_URL}/auth/v1/recover",
             headers=ANON_HEADERS,
-            json={"email": email}
+            json={
+                "email": email,
+                "options": {
+                    "redirectTo": "https://trackform-ai.streamlit.app/?type=recovery"
+                }
+            }
         )
         return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def exchange_recovery_token(token_hash: str) -> dict:
+    """
+    Exchange the token_hash from the recovery email link for a real access token.
+    Call this when ?type=recovery&token_hash=... is in the URL.
+    """
+    try:
+        res = requests.post(
+            f"{SUPABASE_URL}/auth/v1/verify",
+            headers=ANON_HEADERS,
+            json={"type": "recovery", "token_hash": token_hash}
+        )
+        data = res.json()
+        access_token = data.get("access_token")
+        if res.status_code == 200 and access_token:
+            return {"success": True, "access_token": access_token}
+        else:
+            msg = data.get("msg") or data.get("message") or data.get("error_description") or "Token exchange failed"
+            return {"success": False, "error": msg}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def update_password_with_token(access_token: str, new_password: str) -> dict:
+    """
+    Update password using a valid access token (from recovery or active session).
+    """
+    try:
+        res = requests.put(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json"
+            },
+            json={"password": new_password}
+        )
+        if res.status_code == 200:
+            return {"success": True}
+        else:
+            data = res.json()
+            msg = data.get("msg") or data.get("message") or data.get("error_description") or "Password update failed"
+            return {"success": False, "error": msg}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def delete_account(user_id: str) -> dict:
+    """
+    Fully deletes a user — wipes all their data rows first, then removes
+    the Supabase auth user via the admin API. This is the only way to truly
+    delete an account; removing from the profiles table alone leaves the
+    auth user intact and they can still log in.
+    """
+    try:
+        # 1. Delete all user data from every table
+        for table, col in [
+            ("analyses",     "user_id"),
+            ("usage",        "user_id"),
+            ("team_members", "athlete_id"),
+            ("team_invites", "athlete_id"),
+            ("team_invites", "coach_id"),
+        ]:
+            requests.delete(
+                f"{SUPABASE_URL}/rest/v1/{table}?{col}=eq.{user_id}",
+                headers=ADMIN_HEADERS
+            )
+
+        # 2. Delete teams they coach (and cascade members/invites)
+        teams_res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/teams?coach_id=eq.{user_id}&select=id",
+            headers=ADMIN_HEADERS
+        )
+        if teams_res.status_code == 200:
+            for team in teams_res.json():
+                tid = team["id"]
+                requests.delete(f"{SUPABASE_URL}/rest/v1/team_members?team_id=eq.{tid}", headers=ADMIN_HEADERS)
+                requests.delete(f"{SUPABASE_URL}/rest/v1/team_invites?team_id=eq.{tid}", headers=ADMIN_HEADERS)
+                requests.delete(f"{SUPABASE_URL}/rest/v1/teams?id=eq.{tid}", headers=ADMIN_HEADERS)
+
+        # 3. Delete their profile row
+        requests.delete(
+            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+            headers=ADMIN_HEADERS
+        )
+
+        # 4. Delete the Supabase auth user (this is the critical step)
+        admin_delete_headers = {
+            "apikey": SUPABASE_SERVICE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+            "Content-Type": "application/json"
+        }
+        res = requests.delete(
+            f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+            headers=admin_delete_headers
+        )
+        if res.status_code in [200, 204]:
+            return {"success": True}
+        else:
+            return {"success": False, "error": f"Auth delete failed: {res.status_code} - {res.text}"}
+
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -169,11 +284,6 @@ def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: s
     try:
         import stripe
         stripe.api_key = st.secrets["stripe"]["secret_key"]
-        print(f"[Stripe] key: {stripe.api_key[:12]}...")
-        print(f"[Stripe] price_id: {price_id}")
-        print(f"[Stripe] email: {user_email}")
-        print(f"[Stripe] user_id: {user_id}")
-
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
@@ -183,7 +293,6 @@ def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: s
             cancel_url="https://trackform-ai.streamlit.app?payment=cancelled",
             metadata={"user_id": user_id, "tier": tier}
         )
-        print(f"[Stripe] session created: {session.id}")
         return {"success": True, "url": session.url}
     except Exception as e:
         print(f"[Stripe ERROR] {str(e)}")

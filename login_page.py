@@ -6,7 +6,8 @@ import streamlit as st
 import requests
 from auth import (
     sign_in, sign_up, sign_up_and_get_user, create_stripe_checkout,
-    upgrade_tier, reset_password,
+    upgrade_tier, reset_password, exchange_recovery_token,
+    update_password_with_token, delete_account, sign_out,
     SUPABASE_URL, SUPABASE_ANON_KEY
 )
 
@@ -54,6 +55,13 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background: #0a
     border-color: #ff3b3b;
     box-shadow: 0 0 0 3px rgba(255,59,59,0.15);
 }
+.danger-btn > button {
+    background: #1a1a1a !important;
+    border: 1px solid #ff3b3b !important;
+    color: #ff3b3b !important;
+    font-size: 0.9rem !important;
+}
+.danger-btn > button:hover { background: #ff3b3b !important; color: #fff !important; }
 </style>
 """
 
@@ -61,17 +69,47 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background: #0a
 def show_login_page():
     st.markdown(CSS, unsafe_allow_html=True)
 
-    # ── HANDLE PASSWORD RESET REDIRECT ────────────────────────────────────────
     params = st.query_params
+
+    # ── HANDLE PASSWORD RESET REDIRECT ────────────────────────────────────────
+    # Supabase sends ?type=recovery&token_hash=... (NOT a fragment)
+    # This works only if your Supabase redirect URL is set to:
+    # https://trackform-ai.streamlit.app/
     if params.get("type") == "recovery":
-        access_token = params.get("access_token", "")
+        token_hash = params.get("token_hash", "")
+
         _, col, _ = st.columns([1, 2, 1])
         with col:
-            st.markdown('<div style="font-family:\'Bebas Neue\',sans-serif;font-size:4.2rem;letter-spacing:3px;color:#fff;text-align:center;">TRACK<span style="color:#ff3b3b;">FORM</span></div>', unsafe_allow_html=True)
-            st.markdown('<div style="font-size:0.78rem;letter-spacing:3px;text-transform:uppercase;color:#666;text-align:center;margin-bottom:2rem;">AI TECHNIQUE COACH</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:4.2rem;'
+                'letter-spacing:3px;color:#fff;text-align:center;">'
+                'TRACK<span style="color:#ff3b3b;">FORM</span></div>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                '<div style="font-size:0.78rem;letter-spacing:3px;text-transform:uppercase;'
+                'color:#666;text-align:center;margin-bottom:2rem;">AI TECHNIQUE COACH</div>',
+                unsafe_allow_html=True
+            )
             st.markdown("### 🔑 Reset Your Password")
+
+            if not token_hash:
+                st.error("Invalid or expired reset link. Please request a new one.")
+                st.stop()
+
+            # Exchange token_hash for a real access_token
+            if "recovery_access_token" not in st.session_state:
+                with st.spinner("Validating reset link..."):
+                    result = exchange_recovery_token(token_hash)
+                if result.get("success"):
+                    st.session_state["recovery_access_token"] = result["access_token"]
+                else:
+                    st.error(f"Reset link is invalid or expired. Please request a new one. ({result.get('error', '')})")
+                    st.stop()
+
             new_pass     = st.text_input("New Password", type="password", key="new_pass")
             confirm_pass = st.text_input("Confirm New Password", type="password", key="confirm_pass")
+
             if st.button("UPDATE PASSWORD", use_container_width=True):
                 if not new_pass or not confirm_pass:
                     st.error("Please fill in both fields.")
@@ -80,20 +118,14 @@ def show_login_page():
                 elif len(new_pass) < 6:
                     st.error("Password must be at least 6 characters.")
                 else:
-                    res = requests.post(
-                        f"{SUPABASE_URL}/auth/v1/user",
-                        headers={
-                            "apikey": SUPABASE_ANON_KEY,
-                            "Authorization": f"Bearer {access_token}",
-                            "Content-Type": "application/json"
-                        },
-                        json={"password": new_pass}
-                    )
-                    if res.status_code == 200:
+                    access_token = st.session_state.get("recovery_access_token", "")
+                    result = update_password_with_token(access_token, new_pass)
+                    if result.get("success"):
                         st.success("✅ Password updated! You can now sign in.")
+                        st.session_state.pop("recovery_access_token", None)
                         st.query_params.clear()
                     else:
-                        st.error("Failed to update password. Try requesting a new reset link.")
+                        st.error(f"Failed to update password: {result.get('error', '')}. Try requesting a new reset link.")
         st.stop()
 
     # ── HANDLE STRIPE REDIRECT ────────────────────────────────────────────────
@@ -109,8 +141,17 @@ def show_login_page():
     # ── MAIN LOGIN UI ─────────────────────────────────────────────────────────
     _, col, _ = st.columns([1, 2, 1])
     with col:
-        st.markdown('<div style="font-family:\'Bebas Neue\',sans-serif;font-size:4.2rem;letter-spacing:3px;color:#fff;text-align:center;">TRACK<span style="color:#ff3b3b;">FORM</span></div>', unsafe_allow_html=True)
-        st.markdown('<div style="font-size:0.78rem;letter-spacing:3px;text-transform:uppercase;color:#666;text-align:center;margin-bottom:2rem;">AI TECHNIQUE COACH</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:4.2rem;'
+            'letter-spacing:3px;color:#fff;text-align:center;">'
+            'TRACK<span style="color:#ff3b3b;">FORM</span></div>',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            '<div style="font-size:0.78rem;letter-spacing:3px;text-transform:uppercase;'
+            'color:#666;text-align:center;margin-bottom:2rem;">AI TECHNIQUE COACH</div>',
+            unsafe_allow_html=True
+        )
 
         tab1, tab2 = st.tabs(["Sign In", "Create Account"])
 
@@ -147,10 +188,42 @@ def show_login_page():
                 else:
                     st.error("Please enter your email address.")
 
+            # ── DELETE ACCOUNT ─────────────────────────────────────────────────
+            st.markdown("---")
+            with st.expander("⚠️ Delete My Account"):
+                st.warning("This permanently deletes your account and all data. This cannot be undone.")
+                del_email = st.text_input("Confirm your email", key="del_email", placeholder="you@email.com")
+                del_pass  = st.text_input("Confirm your password", type="password", key="del_pass")
+
+                st.markdown('<div class="danger-btn">', unsafe_allow_html=True)
+                if st.button("PERMANENTLY DELETE ACCOUNT", key="btn_delete", use_container_width=True):
+                    if not del_email or not del_pass:
+                        st.error("Please enter your email and password to confirm.")
+                    else:
+                        with st.spinner("Verifying credentials..."):
+                            auth_result = sign_in(del_email, del_pass)
+                        if not auth_result.get("success"):
+                            st.error("Incorrect email or password.")
+                        else:
+                            user_id = auth_result["user"].id
+                            with st.spinner("Deleting account..."):
+                                del_result = delete_account(user_id)
+                            if del_result.get("success"):
+                                sign_out()
+                                st.success("Your account has been permanently deleted.")
+                                st.rerun()
+                            else:
+                                st.error(f"Deletion failed: {del_result.get('error', 'Unknown error')}")
+                st.markdown('</div>', unsafe_allow_html=True)
+
         # ── SIGN UP ───────────────────────────────────────────────────────────
         with tab2:
             st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown('<div style="font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;color:#666;margin-bottom:0.8rem;">CHOOSE YOUR PLAN</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div style="font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;'
+                'color:#666;margin-bottom:0.8rem;">CHOOSE YOUR PLAN</div>',
+                unsafe_allow_html=True
+            )
 
             if "selected_plan" not in st.session_state:
                 st.session_state.selected_plan = "free"
