@@ -212,30 +212,30 @@ if st.session_state.sidebar_open:
             </div>
             """, unsafe_allow_html=True)
 
-        st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("⚡ Upgrade to PRO — $9.99/mo", key="upgrade_pro", use_container_width=True):
-        checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["pro"], "pro")
-        st.session_state["checkout_result"] = checkout
+            if st.button("⚡ Upgrade to PRO — $9.99/mo", key="upgrade_pro", use_container_width=True):
+                checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["pro"], "pro")
+                st.session_state["checkout_result"] = checkout
 
-if st.button("🏆 Upgrade to COACH — $29.99/mo", key="upgrade_coach", use_container_width=True):
-    checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["coach"], "coach")
-    st.session_state["checkout_result"] = checkout
+            if st.button("🏆 Upgrade to COACH — $29.99/mo", key="upgrade_coach", use_container_width=True):
+                checkout = create_stripe_checkout(user_id, user.email, STRIPE_PRICES["coach"], "coach")
+                st.session_state["checkout_result"] = checkout
 
-if "checkout_result" in st.session_state:
-    checkout = st.session_state["checkout_result"]
-    if checkout.get("success") and checkout.get("url"):
-        st.link_button("👉 Click here to pay", checkout["url"])
-    else:
-        st.error(f"Error: {checkout.get('error', 'Unknown')}")
+            if "checkout_result" in st.session_state:
+                checkout = st.session_state["checkout_result"]
+                if checkout.get("success") and checkout.get("url"):
+                    st.link_button("👉 Click here to pay", checkout["url"])
+                else:
+                    st.error(f"Error: {checkout.get('error', 'Unknown')}")
 
-elif tier == "coach":
-    st.success("✅ COACH Plan — Unlimited")
+        elif tier == "coach":
+            st.success("✅ COACH Plan — Unlimited")
 
-st.divider()
-if st.button("🚪 Sign Out", use_container_width=True):
-    sign_out()
-    st.rerun()
+        st.divider()
+        if st.button("🚪 Sign Out", use_container_width=True):
+            sign_out()
+            st.rerun()
 
 # =============================================================================
 # HAMBURGER TOGGLE
