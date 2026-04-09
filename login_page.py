@@ -73,9 +73,13 @@ def show_login_page():
 
         tab1, tab2 = st.tabs(["Sign In", "Create Account"])
 
-              # ── SIGN IN ───────────────────────────────────────────────────────────
+        # ── SIGN IN ───────────────────────────────────────────────────────────
         with tab1:
-           if st.button("SIGN IN", key="btn_login", use_container_width=True):
+            st.markdown("<br>", unsafe_allow_html=True)
+            email    = st.text_input("Email Address", key="login_email", placeholder="you@email.com")
+            password = st.text_input("Password", type="password", key="login_password", placeholder="Enter your password")
+
+            if st.button("SIGN IN", key="btn_login", use_container_width=True):
                 if not email or not password:
                     st.error("Please enter both email and password.")
                 else:
@@ -90,7 +94,8 @@ def show_login_page():
                             st.error("Please confirm your email first. Check your inbox for a confirmation link.")
                         else:
                             st.error("Invalid email or password.")
-            # ── Forgot Password (Added - Minimal) ─────────────────────────────
+
+            # ── Forgot Password ────────────────────────────────────────────────
             st.markdown("---")
             st.markdown("**Forgot your password?**")
             reset_email = st.text_input("Enter your email address", key="reset_email", placeholder="you@email.com")
