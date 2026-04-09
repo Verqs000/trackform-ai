@@ -142,6 +142,9 @@ def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: s
     try:
         import stripe
         stripe.api_key = st.secrets["stripe"]["secret_key"]
+        print(f"[Stripe] key: {stripe.api_key[:12]}...")
+        print(f"[Stripe] price_id: {price_id}")
+        print(f"[Stripe] email: {user_email}")
 
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -154,12 +157,8 @@ def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: s
         )
         return {"success": True, "url": session.url}
     except Exception as e:
+        print(f"[Stripe ERROR] {str(e)}")
         return {"success": False, "error": str(e)}
-
-
-def handle_stripe_success(user_id: str, tier: str):
-    upgrade_tier(user_id, tier)
-
 
 # ── USAGE ─────────────────────────────────────────────────────────────────────
 
