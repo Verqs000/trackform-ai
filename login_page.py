@@ -5,7 +5,7 @@ login_page.py - Login & Signup with Stripe Integration
 import streamlit as st
 import requests
 from auth import (
-    sign_in, sign_up, create_stripe_checkout,
+    sign_in, sign_up, sign_up_and_get_user, create_stripe_checkout,
     upgrade_tier, reset_password,
     SUPABASE_URL, SUPABASE_ANON_KEY
 )
@@ -214,31 +214,28 @@ def show_login_page():
                     st.error("Password must be at least 6 characters long.")
                 else:
                     with st.spinner("Creating your account..."):
-                        result = sign_up(new_email, new_password)
+                        result = sign_up_and_get_user(new_email, new_password)
 
                     if result.get("success"):
+                        user_id = result.get("user_id")
                         if plan == "free":
                             st.success("✅ Account created! Please check your email to confirm, then sign in.")
                         else:
-                            sign_result = sign_in(new_email, new_password)
-                            if sign_result.get("success"):
-                                user     = sign_result["user"]
-                                price_id = STRIPE_PRICES[plan]
-                                checkout = create_stripe_checkout(user.id, new_email, price_id, plan)
-                                if checkout.get("success") and checkout.get("url"):
-                                    st.markdown(f"""
-                                    <div style="background:#111;border:2px solid #22c55e;border-radius:12px;padding:2rem;text-align:center;margin:1.5rem 0;">
-                                        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:#22c55e;letter-spacing:2px;">ACCOUNT CREATED!</div>
-                                        <div style="color:#aaa;font-size:0.9rem;margin:0.5rem 0;">Click below to complete your {plan.upper()} subscription.</div>
-                                        <a href="{checkout['url']}" target="_blank" style="display:inline-block;background:#ff3b3b;color:white;padding:0.9rem 2.5rem;border-radius:8px;text-decoration:none;font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:2px;margin-top:1rem;">
-                                            PROCEED TO PAYMENT →
-                                        </a>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                                else:
-                                    st.warning("Account created but payment link failed. Please contact trackformai@gmail.com")
+                            price_id = STRIPE_PRICES[plan]
+                            checkout = create_stripe_checkout(user_id, new_email, price_id, plan)
+                            if checkout.get("success") and checkout.get("url"):
+                                st.markdown(f"""
+                                <div style="background:#111;border:2px solid #22c55e;border-radius:12px;padding:2rem;text-align:center;margin:1.5rem 0;">
+                                    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:#22c55e;letter-spacing:2px;">ACCOUNT CREATED!</div>
+                                    <div style="color:#aaa;font-size:0.9rem;margin:0.5rem 0;">Click below to complete your {plan.upper()} subscription.</div>
+                                    <a href="{checkout['url']}" target="_blank" style="display:inline-block;background:#ff3b3b;color:white;padding:0.9rem 2.5rem;border-radius:8px;text-decoration:none;font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:2px;margin-top:1rem;">
+                                        PROCEED TO PAYMENT →
+                                    </a>
+                                </div>
+                                """, unsafe_allow_html=True)
                             else:
-                                st.success("Account created! Please confirm your email then sign in.")
+                                error_msg = checkout.get("error", "Unknown error")
+                                st.warning(f"Account created but payment link failed: {error_msg}. Please contact trackformai@gmail.com")
                     else:
                         err = result.get("error", "")
                         if "already registered" in err.lower():

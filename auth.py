@@ -52,6 +52,33 @@ def sign_up(email: str, password: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
+def sign_up_and_get_user(email: str, password: str) -> dict:
+    """Sign up and return the user_id directly from the signup response.
+    This avoids needing to sign in after signup (which fails if email confirmation is on)."""
+    url = f"{SUPABASE_URL}/auth/v1/signup"
+    try:
+        res = requests.post(url, headers=ANON_HEADERS, json={"email": email, "password": password})
+        data = res.json()
+        print(f"[SignUp] status: {res.status_code}, data keys: {list(data.keys())}")
+
+        # Supabase returns user_id in different places depending on confirmation settings
+        user_id = (
+            data.get("id") or
+            (data.get("user") or {}).get("id") or
+            data.get("user_id")
+        )
+
+        if res.status_code in [200, 201] and user_id:
+            _ensure_profile(user_id, email)
+            return {"success": True, "user_id": user_id}
+        else:
+            msg = data.get("msg") or data.get("message") or data.get("error_description") or "Signup failed"
+            return {"success": False, "error": msg}
+    except Exception as e:
+        print(f"[SignUp ERROR] {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
 def sign_in(email: str, password: str) -> dict:
     url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
     try:
@@ -145,6 +172,7 @@ def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: s
         print(f"[Stripe] key: {stripe.api_key[:12]}...")
         print(f"[Stripe] price_id: {price_id}")
         print(f"[Stripe] email: {user_email}")
+        print(f"[Stripe] user_id: {user_id}")
 
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -155,6 +183,7 @@ def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: s
             cancel_url="https://trackform-ai.streamlit.app?payment=cancelled",
             metadata={"user_id": user_id, "tier": tier}
         )
+        print(f"[Stripe] session created: {session.id}")
         return {"success": True, "url": session.url}
     except Exception as e:
         print(f"[Stripe ERROR] {str(e)}")
