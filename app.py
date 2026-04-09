@@ -292,7 +292,7 @@ EVENT_OPTIONS = {
     "💿 Discus": "discus",
     "🏹 Javelin": "javelin"
 }
-selected_label = st.selectbox("", list(EVENT_OPTIONS.keys()), label_visibility="collapsed")
+selected_label = st.selectbox("Select Event", list(EVENT_OPTIONS.keys()), label_visibility="collapsed")
 selected_event = EVENT_OPTIONS[selected_label]
 
 # Video Upload
