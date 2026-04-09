@@ -159,6 +159,8 @@ def create_stripe_checkout(user_id: str, user_email: str, price_id: str, tier: s
     except Exception as e:
         print(f"[Stripe ERROR] {str(e)}")
         return {"success": False, "error": str(e)}
+    def handle_stripe_success(user_id: str, tier: str):
+    upgrade_tier(user_id, tier)
 
 # ── USAGE ─────────────────────────────────────────────────────────────────────
 
