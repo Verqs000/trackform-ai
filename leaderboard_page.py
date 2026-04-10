@@ -5,13 +5,8 @@ Ranks by: best score, average score, most analyses
 
 import streamlit as st
 import requests
-from typing import List, Dict, Any
+from typing import List, Dict
 
-# ── CONFIG (Move these to environment variables or secrets in production!) ──
-SUPABASE_URL = "https://iensdzgzmrkujqvvjbnk.supabase.co"
-
-# ⚠️ WARNING: Do NOT hardcode service key in frontend code for production!
-# Use st.secrets or a backend proxy instead.
 SUPABASE_URL = st.secrets["supabase"]["url"]
 SUPABASE_SERVICE_KEY = st.secrets["supabase"]["service_key"]
 
@@ -23,13 +18,16 @@ ADMIN_HEADERS = {
 
 MEDAL = {1: "🥇", 2: "🥈", 3: "🥉"}
 EVENT_ICONS = {
-    "sprint": "⚡", "shot_put": "🏋️", "discus": "💿",
-    "javelin": "🏹", "unknown": "🏃"
+    "sprint":   "⚡",
+    "hurdles":  "🚧",
+    "shot_put": "🏋️",
+    "discus":   "💿",
+    "javelin":  "🏹",
+    "unknown":  "🏃"
 }
 
 
 def _get_all_analyses() -> List[Dict]:
-    """Fetch all analyses (consider limiting rows in production)"""
     try:
         res = requests.get(
             f"{SUPABASE_URL}/rest/v1/analyses?select=user_id,score,event_type,created_at&order=created_at.desc&limit=1000",
@@ -45,7 +43,6 @@ def _get_all_analyses() -> List[Dict]:
 
 
 def _get_all_profiles() -> Dict:
-    """Fetch user profiles for email mapping"""
     try:
         res = requests.get(
             f"{SUPABASE_URL}/rest/v1/profiles?select=id,email",
@@ -60,7 +57,6 @@ def _get_all_profiles() -> Dict:
 
 
 def _mask_email(email: str) -> str:
-    """Mask email for privacy (e.g., joh***@gmail.com)"""
     if not email or "@" not in email:
         return "athlete***@***"
     local, domain = email.split("@", 1)
@@ -69,13 +65,8 @@ def _mask_email(email: str) -> str:
 
 
 def _build_leaderboard_stats(analyses: List[Dict], profiles: Dict) -> List[Dict]:
-    """Build aggregated stats per user"""
     from collections import defaultdict
-    user_stats = defaultdict(lambda: {
-        "scores": [], 
-        "events": [], 
-        "count": 0
-    })
+    user_stats = defaultdict(lambda: {"scores": [], "events": [], "count": 0})
 
     for a in analyses:
         uid = a.get("user_id")
@@ -83,26 +74,23 @@ def _build_leaderboard_stats(analyses: List[Dict], profiles: Dict) -> List[Dict]
             continue
         score = a.get("score") or 0
         event = a.get("event_type", "unknown")
-
         user_stats[uid]["scores"].append(score)
         user_stats[uid]["events"].append(event)
         user_stats[uid]["count"] += 1
         user_stats[uid]["email"] = profiles.get(uid, "Unknown Athlete")
 
-    # Convert to final leaderboard format
     leaderboard = []
     for uid, data in user_stats.items():
         scores = data["scores"]
         events = data["events"]
         best_event = max(set(events), key=events.count) if events else "unknown"
-
         leaderboard.append({
-            "user_id": uid,
-            "email": data["email"],
-            "best_score": max(scores) if scores else 0,
-            "avg_score": round(sum(scores) / len(scores)) if scores else 0,
+            "user_id":        uid,
+            "email":          data["email"],
+            "best_score":     max(scores) if scores else 0,
+            "avg_score":      round(sum(scores) / len(scores)) if scores else 0,
             "total_analyses": data["count"],
-            "best_event": best_event
+            "best_event":     best_event
         })
 
     return leaderboard
@@ -139,17 +127,15 @@ def show_leaderboard_page(current_user):
     </div>
     """, unsafe_allow_html=True)
 
-    # Load data
     with st.spinner("🏆 Loading global leaderboard..."):
         analyses = _get_all_analyses()
         profiles = _get_all_profiles()
-        stats = _build_leaderboard_stats(analyses, profiles)
+        stats    = _build_leaderboard_stats(analyses, profiles)
 
     if not stats:
         st.info("No analyses submitted yet. Be the first to upload a video!")
         return
 
-    # Ranking options
     mode = st.radio(
         "Rank by",
         ["🏆 Best Score", "📊 Average Score", "🔥 Most Analyses"],
@@ -157,39 +143,35 @@ def show_leaderboard_page(current_user):
         label_visibility="collapsed"
     )
 
-    # Event filter
-    all_events = ["All Events"] + sorted(list({a.get("event_type", "unknown") for a in analyses if a.get("event_type")}))
-    event_filter = st.selectbox("Filter by event", all_events, label_visibility="collapsed")
+    all_events    = ["All Events"] + sorted(list({a.get("event_type", "unknown") for a in analyses if a.get("event_type")}))
+    event_filter  = st.selectbox("Filter by event", all_events, label_visibility="collapsed")
 
-    # Apply filter
     if event_filter != "All Events":
         filtered_analyses = [a for a in analyses if a.get("event_type") == event_filter]
-        filtered_stats = _build_leaderboard_stats(filtered_analyses, profiles)
+        filtered_stats    = _build_leaderboard_stats(filtered_analyses, profiles)
     else:
         filtered_stats = stats
 
-    # Sort data
     if mode == "🏆 Best Score":
         sorted_stats = sorted(filtered_stats, key=lambda x: x["best_score"], reverse=True)
-        score_key = "best_score"
-        score_label = "BEST"
+        score_key    = "best_score"
+        score_label  = "BEST"
     elif mode == "📊 Average Score":
         sorted_stats = sorted(filtered_stats, key=lambda x: x["avg_score"], reverse=True)
-        score_key = "avg_score"
-        score_label = "AVG"
+        score_key    = "avg_score"
+        score_label  = "AVG"
     else:
         sorted_stats = sorted(filtered_stats, key=lambda x: x["total_analyses"], reverse=True)
-        score_key = "total_analyses"
-        score_label = "RUNS"
+        score_key    = "total_analyses"
+        score_label  = "RUNS"
 
     current_uid = current_user.id
-    your_entry = next((s for s in sorted_stats if s["user_id"] == current_uid), None)
+    your_entry  = next((s for s in sorted_stats if s["user_id"] == current_uid), None)
 
     if your_entry:
-        your_rank = sorted_stats.index(your_entry) + 1
+        your_rank  = sorted_stats.index(your_entry) + 1
         your_score = your_entry[score_key]
-        color = "#22c55e" if your_score >= 80 else "#f59e0b" if your_score >= 60 else "#ff3b3b"
-
+        color      = "#22c55e" if your_score >= 80 else "#f59e0b" if your_score >= 60 else "#ff3b3b"
         st.markdown(f"""
         <div style="background:#1a0a0a;border:1px solid #ff3b3b;border-radius:12px;padding:1.2rem 1.6rem;margin:1.5rem 0;display:flex;justify-content:space-between;align-items:center;">
             <div>
@@ -206,35 +188,38 @@ def show_leaderboard_page(current_user):
     # Top 3 Podium
     if len(sorted_stats) >= 3:
         st.markdown('<div class="section-header">🏆 TOP 3</div>', unsafe_allow_html=True)
-        cols = st.columns(3)
-        for col, rank in zip(cols, [1, 0, 2]):   # Center = 1st place visually
-            athlete = sorted_stats[rank]
-            medal = MEDAL.get(rank + 1, "🏅")
-            score = athlete[score_key]
-            color = "#22c55e" if score >= 80 else "#f59e0b" if score >= 60 else "#ff3b3b"
-            is_you = athlete["user_id"] == current_uid
+        cols     = st.columns(3)
+        podium   = [1, 0, 2]  # Center = 1st place visually
+        for col, rank in zip(cols, podium):
+            if rank < len(sorted_stats):
+                athlete  = sorted_stats[rank]
+                medal    = MEDAL.get(rank + 1, "🏅")
+                score    = athlete[score_key]
+                color    = "#22c55e" if score >= 80 else "#f59e0b" if score >= 60 else "#ff3b3b"
+                is_you   = athlete["user_id"] == current_uid
+                with col:
+                    st.markdown(f"""
+                    <div style="background:#111;border:2px solid {'#ff3b3b' if is_you else '#1e1e1e'};border-radius:12px;padding:1.4rem 0.8rem;text-align:center;">
+                        <div style="font-size:2rem;margin-bottom:0.5rem;">{medal}</div>
+                        <div style="font-size:0.85rem;color:#aaa;">{_mask_email(athlete['email'])}</div>
+                        <div style="font-family:'Bebas Neue',sans-serif;font-size:2.8rem;color:{color};margin:0.4rem 0;">{score}</div>
+                        <div style="font-size:0.75rem;color:#555;">{score_label}</div>
+                        <div style="font-size:0.75rem;color:#333;margin-top:0.3rem;">{EVENT_ICONS.get(athlete['best_event'], '🏃')} {athlete['best_event'].replace('_',' ').title()}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-            with col:
-                st.markdown(f"""
-                <div style="background:#111;border:2px solid {'#ff3b3b' if is_you else '#1e1e1e'};border-radius:12px;padding:1.4rem 0.8rem;text-align:center;height:100%;">
-                    <div style="font-size:2rem;margin-bottom:0.5rem;">{medal}</div>
-                    <div style="font-size:0.85rem;color:#aaa;">{_mask_email(athlete['email'])}</div>
-                    <div style="font-family:'Bebas Neue',sans-serif;font-size:2.8rem;color:{color};margin:0.4rem 0;">{score}</div>
-                    <div style="font-size:0.75rem;color:#555;">{score_label}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-    # Full Leaderboard
+    # Full Rankings
     st.markdown('<div class="section-header">FULL RANKINGS</div>', unsafe_allow_html=True)
 
     for i, athlete in enumerate(sorted_stats[:50], 1):
-        score = athlete[score_key]
-        color = "#22c55e" if score >= 80 else "#f59e0b" if score >= 60 else "#ff3b3b"
+        score  = athlete[score_key]
+        color  = "#22c55e" if score >= 80 else "#f59e0b" if score >= 60 else "#ff3b3b"
         is_you = athlete["user_id"] == current_uid
+        rank_display = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"#{i}"
 
         st.markdown(f"""
         <div class="lb-row {'lb-row-you' if is_you else ''}">
-            <div class="lb-rank">{"🥇" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"#{i}"}</div>
+            <div class="lb-rank">{rank_display}</div>
             <div style="font-size:1.3rem;">{EVENT_ICONS.get(athlete['best_event'], '🏃')}</div>
             <div class="lb-email">{_mask_email(athlete['email'])}{" 👈 YOU" if is_you else ""}</div>
             <div class="lb-meta">{athlete['total_analyses']} run{"s" if athlete['total_analyses'] != 1 else ""}</div>

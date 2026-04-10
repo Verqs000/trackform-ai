@@ -276,6 +276,7 @@ if not can_go:
 # Event Selector
 EVENT_OPTIONS = {
     "⚡ Sprint / Block Start": "sprint",
+    "🚧 Hurdles": "hurdles",
     "🏋️ Shot Put": "shot_put",
     "💿 Discus": "discus",
     "🏹 Javelin": "javelin"
