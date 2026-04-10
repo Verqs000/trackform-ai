@@ -304,7 +304,14 @@ if uploaded_file and st.button("⚡ ANALYZE MY TECHNIQUE", type="primary", use_c
             results = judge.analyze(poses, event=selected_event, fps=fps)
 
         increment_usage(user_id)
-        save_analysis(user_id, selected_event, results, video_path)
+        save_analysis(
+            user_id,
+            selected_event,
+            results.get("overall_score", 0),
+            results.get("errors", []),
+            results.get("drills", []),
+            results.get("metrics", {})
+        )
 
         st.success("✅ Analysis Complete!")
 
