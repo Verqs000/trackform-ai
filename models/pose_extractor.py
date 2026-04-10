@@ -1,7 +1,7 @@
 """
 Pose Extractor - Production Ready
 Uses MediaPipe Pose Landmarker (0.10.33+)
-Supports: sprint, shot_put, discus, javelin, hurdles
+Supports: sprint, hurdles, shot_put, discus, javelin
 """
 
 import cv2
@@ -16,107 +16,46 @@ from mediapipe.tasks.python.core.base_options import BaseOptions
 
 
 class PoseExtractor:
-    """Singleton-style Pose Extractor with MediaPipe Pose Landmarker."""
+    """Pose Extractor using MediaPipe Pose Landmarker."""
 
-    _instance = None
-
-    def __new__(cls, model_path: str = "models/pose_landmarker.task"):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.landmarker = None
-            cls._instance._initialize(model_path)
-        return cls._instance
+    def __init__(self, model_path: str = "models/pose_landmarker.task"):
+        self.landmarker = None
+        self._initialize(model_path)
 
     def _initialize(self, model_path: str):
         """Initialize the MediaPipe Pose Landmarker."""
-        try:
-            model_path = Path(model_path)
-            if not model_path.exists():
-                raise FileNotFoundError(
-                    f"Pose model not found at: {model_path}. "
-                    "Download pose_landmarker.task and place it in the models/ folder."
-                )
-
-            base_options = BaseOptions(model_asset_path=str(model_path))
-            options = vision.PoseLandmarkerOptions(
-                base_options=base_options,
-                running_mode=vision.RunningMode.VIDEO,
-                num_poses=1,
-                min_pose_detection_confidence=0.6,
-                min_pose_presence_confidence=0.6,
-                min_tracking_confidence=0.6,
-                output_segmentation_masks=False
+        model_path = Path(model_path)
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"Pose model not found at: {model_path}. "
+                "Download pose_landmarker.task and place it in the models/ folder."
             )
 
-            self.landmarker = vision.PoseLandmarker.create_from_options(options)
-            print("✅ PoseExtractor initialized successfully")
+        base_options = BaseOptions(model_asset_path=str(model_path))
+        options = vision.PoseLandmarkerOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.VIDEO,
+            num_poses=1,
+            min_pose_detection_confidence=0.6,
+            min_pose_presence_confidence=0.6,
+            min_tracking_confidence=0.6,
+            output_segmentation_masks=False
+        )
 
-        except Exception as e:
-            self.landmarker = None
-            print(f"❌ PoseExtractor init error: {e}")
-            raise
+        self.landmarker = vision.PoseLandmarker.create_from_options(options)
+        print("✅ PoseExtractor initialized successfully")
 
         self.key_points = {
             'nose': 0,
-            'left_shoulder': 11, 'right_shoulder': 12,
-            'left_elbow': 13, 'right_elbow': 14,
-            'left_wrist': 15, 'right_wrist': 16,
-            'left_hip': 23, 'right_hip': 24,
-            'left_knee': 25, 'right_knee': 26,
-            'left_ankle': 27, 'right_ankle': 28,
-            'left_heel': 29, 'right_heel': 30,
+            'left_shoulder': 11,  'right_shoulder': 12,
+            'left_elbow': 13,     'right_elbow': 14,
+            'left_wrist': 15,     'right_wrist': 16,
+            'left_hip': 23,       'right_hip': 24,
+            'left_knee': 25,      'right_knee': 26,
+            'left_ankle': 27,     'right_ankle': 28,
+            'left_heel': 29,      'right_heel': 30,
             'left_foot_index': 31, 'right_foot_index': 32,
         }
-
-        # Event-specific focus points for analysis
-        self.event_focus = {
-            'sprint': [
-                'left_hip', 'right_hip',
-                'left_knee', 'right_knee',
-                'left_ankle', 'right_ankle',
-                'left_shoulder', 'right_shoulder',
-                'left_elbow', 'right_elbow',
-            ],
-            'hurdles': [
-                'left_hip', 'right_hip',
-                'left_knee', 'right_knee',
-                'left_ankle', 'right_ankle',
-                'left_heel', 'right_heel',
-                'left_foot_index', 'right_foot_index',
-                'left_shoulder', 'right_shoulder',
-                'nose',
-            ],
-            'shot_put': [
-                'left_shoulder', 'right_shoulder',
-                'left_elbow', 'right_elbow',
-                'left_wrist', 'right_wrist',
-                'left_hip', 'right_hip',
-                'left_knee', 'right_knee',
-            ],
-            'discus': [
-                'left_shoulder', 'right_shoulder',
-                'left_elbow', 'right_elbow',
-                'left_wrist', 'right_wrist',
-                'left_hip', 'right_hip',
-                'left_knee', 'right_knee',
-                'left_ankle', 'right_ankle',
-            ],
-            'javelin': [
-                'left_shoulder', 'right_shoulder',
-                'left_elbow', 'right_elbow',
-                'left_wrist', 'right_wrist',
-                'left_hip', 'right_hip',
-                'left_knee', 'right_knee',
-                'left_ankle', 'right_ankle',
-                'nose',
-            ],
-        }
-
-    def _ensure_initialized(self, model_path: str = "models/pose_landmarker.task"):
-        """Re-initialize if landmarker was lost (e.g. after Streamlit rerun)."""
-        if not hasattr(self, 'landmarker') or self.landmarker is None:
-            print("⚠️ Landmarker lost, reinitializing...")
-            self._initialize(model_path)
 
     def extract_from_video(
         self,
@@ -129,7 +68,8 @@ class PoseExtractor:
         Extract poses from video.
         Returns: (list_of_pose_data, fps)
         """
-        self._ensure_initialized()
+        if self.landmarker is None:
+            raise RuntimeError("Landmarker not initialized. Check that pose_landmarker.task exists.")
 
         video_path = Path(video_path)
         if not video_path.exists():
@@ -139,7 +79,7 @@ class PoseExtractor:
         if not cap.isOpened():
             raise ValueError(f"Could not open video: {video_path}")
 
-        fps = cap.get(cv2.CAP_PROP_FPS)
+        fps          = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         if fps < 1:
@@ -147,11 +87,10 @@ class PoseExtractor:
 
         print(f"📹 Processing: {video_path.name} | {total_frames} frames @ {fps:.1f} FPS | Event: {event}")
 
-        poses = []
-        frame_num = 0
+        poses         = []
+        frame_num     = 0
         processed_count = 0
 
-        # Try to use streamlit progress bar if available
         progress_bar = None
         if show_progress:
             try:
@@ -170,7 +109,7 @@ class PoseExtractor:
                 continue
 
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+            mp_image  = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
 
             timestamp_ms = int((frame_num / fps) * 1000)
 
@@ -203,8 +142,8 @@ class PoseExtractor:
 
         if len(poses) == 0:
             raise ValueError(
-                "No poses detected in video. Make sure the athlete is clearly visible "
-                "and the video is not too dark or blurry."
+                "No poses detected in video. Make sure the athlete is clearly "
+                "visible and the video is not too dark or blurry."
             )
 
         return poses, float(fps)
@@ -219,7 +158,7 @@ class PoseExtractor:
         """Extract relevant keypoints from MediaPipe landmarks."""
         data = {
             'frame': frame_num,
-            'time': round(frame_num / fps, 3),
+            'time':  round(frame_num / fps, 3),
             'event': event,
             'points': {}
         }
@@ -228,16 +167,14 @@ class PoseExtractor:
             if idx < len(landmarks):
                 lm = landmarks[idx]
                 data['points'][name] = {
-                    'x': round(float(lm.x), 4),
-                    'y': round(float(lm.y), 4),
-                    'z': round(float(lm.z), 4),
-                    'visible': float(lm.visibility) > 0.5,
+                    'x':        round(float(lm.x), 4),
+                    'y':        round(float(lm.y), 4),
+                    'z':        round(float(lm.z), 4),
+                    'visible':  float(lm.visibility) > 0.5,
                     'presence': float(lm.presence) > 0.5
                 }
 
-        # Add computed angles relevant to each event
         data['angles'] = self._compute_angles(data['points'], event)
-
         return data
 
     def _compute_angles(self, points: Dict, event: str) -> Dict:
@@ -245,11 +182,10 @@ class PoseExtractor:
         angles = {}
 
         def angle_between(a, b, c) -> Optional[float]:
-            """Compute angle at point b given points a, b, c."""
             try:
-                if not (points.get(a) and points.get(b) and points.get(c)):
+                if not all(k in points for k in [a, b, c]):
                     return None
-                if not (points[a]['visible'] and points[b]['visible'] and points[c]['visible']):
+                if not all(points[k].get('visible', False) for k in [a, b, c]):
                     return None
                 pa = np.array([points[a]['x'], points[a]['y']])
                 pb = np.array([points[b]['x'], points[b]['y']])
@@ -262,29 +198,26 @@ class PoseExtractor:
                 return None
 
         # Universal angles
-        angles['left_knee_angle']  = angle_between('left_hip', 'left_knee', 'left_ankle')
-        angles['right_knee_angle'] = angle_between('right_hip', 'right_knee', 'right_ankle')
-        angles['left_elbow_angle'] = angle_between('left_shoulder', 'left_elbow', 'left_wrist')
+        angles['left_knee_angle']   = angle_between('left_hip',      'left_knee',   'left_ankle')
+        angles['right_knee_angle']  = angle_between('right_hip',     'right_knee',  'right_ankle')
+        angles['left_elbow_angle']  = angle_between('left_shoulder',  'left_elbow',  'left_wrist')
         angles['right_elbow_angle'] = angle_between('right_shoulder', 'right_elbow', 'right_wrist')
-        angles['left_hip_angle']   = angle_between('left_shoulder', 'left_hip', 'left_knee')
-        angles['right_hip_angle']  = angle_between('right_shoulder', 'right_hip', 'right_knee')
+        angles['left_hip_angle']    = angle_between('left_shoulder',  'left_hip',    'left_knee')
+        angles['right_hip_angle']   = angle_between('right_shoulder', 'right_hip',   'right_knee')
 
-        # Hurdles-specific angles
         if event == 'hurdles':
-            angles['lead_leg_angle']   = angle_between('right_hip', 'right_knee', 'right_ankle')
-            angles['trail_leg_angle']  = angle_between('left_hip', 'left_knee', 'left_ankle')
-            angles['torso_lean']       = angle_between('nose', 'left_shoulder', 'left_hip')
-            angles['left_ankle_flex']  = angle_between('left_knee', 'left_ankle', 'left_foot_index')
+            angles['lead_leg_angle']   = angle_between('right_hip',  'right_knee', 'right_ankle')
+            angles['trail_leg_angle']  = angle_between('left_hip',   'left_knee',  'left_ankle')
+            angles['torso_lean']       = angle_between('nose',        'left_shoulder', 'left_hip')
+            angles['left_ankle_flex']  = angle_between('left_knee',  'left_ankle',  'left_foot_index')
             angles['right_ankle_flex'] = angle_between('right_knee', 'right_ankle', 'right_foot_index')
 
-        # Sprint-specific
         elif event == 'sprint':
             angles['trunk_angle'] = angle_between('left_shoulder', 'left_hip', 'left_knee')
 
-        # Throwing events
         elif event in ['shot_put', 'discus', 'javelin']:
-            angles['throwing_arm_angle'] = angle_between('right_shoulder', 'right_elbow', 'right_wrist')
-            angles['shoulder_hip_rotation'] = angle_between('left_shoulder', 'right_shoulder', 'right_hip')
+            angles['throwing_arm_angle']     = angle_between('right_shoulder', 'right_elbow', 'right_wrist')
+            angles['shoulder_hip_rotation']  = angle_between('left_shoulder',  'right_shoulder', 'right_hip')
 
         return {k: v for k, v in angles.items() if v is not None}
 
@@ -297,23 +230,16 @@ class PoseExtractor:
             json.dump({
                 'metadata': {
                     'extracted_at': datetime.now().isoformat(),
-                    'total_poses': len(poses),
-                    'event': poses[0].get('event', 'unknown') if poses else 'unknown'
+                    'total_poses':  len(poses),
+                    'event':        poses[0].get('event', 'unknown') if poses else 'unknown'
                 },
                 'poses': poses
             }, f, indent=2)
 
         print(f"💾 Saved poses to: {output_path}")
 
-    @classmethod
-    def reset(cls):
-        """Reset singleton — useful for testing or forcing reinitialization."""
-        cls._instance = None
 
-
-# For testing
 if __name__ == "__main__":
     extractor = PoseExtractor()
     print("✅ PoseExtractor initialized successfully")
     print("Tracking keypoints:", list(extractor.key_points.keys()))
-    print("Supported events:", list(extractor.event_focus.keys()))
