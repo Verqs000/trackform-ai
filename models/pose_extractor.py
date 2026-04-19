@@ -1,6 +1,6 @@
 """
 Pose Extractor - Production Ready
-Uses MediaPipe Pose Landmarker (0.10.33+)
+Uses YOLOv8n-pose (Ultralytics) — no external model file required
 Supports: sprint, hurdles, shot_put, discus, javelin
 """
 
@@ -10,52 +10,72 @@ import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
-import mediapipe as mp
-from mediapipe.tasks.python import vision
-from mediapipe.tasks.python.core.base_options import BaseOptions
+
+
+# COCO 17-point keypoint index → name mapping
+_COCO_KP_NAMES = [
+    'nose',           # 0
+    'left_eye',       # 1
+    'right_eye',      # 2
+    'left_ear',       # 3
+    'right_ear',      # 4
+    'left_shoulder',  # 5
+    'right_shoulder', # 6
+    'left_elbow',     # 7
+    'right_elbow',    # 8
+    'left_wrist',     # 9
+    'right_wrist',    # 10
+    'left_hip',       # 11
+    'right_hip',      # 12
+    'left_knee',      # 13
+    'right_knee',     # 14
+    'left_ankle',     # 15
+    'right_ankle',    # 16
+]
+
+# Subset we actually track — matches the old MediaPipe key_points dict
+# (minus heel/foot_index which COCO doesn't have; those are gracefully absent)
+_TRACKED = {
+    'nose':            0,
+    'left_shoulder':   5,  'right_shoulder':  6,
+    'left_elbow':      7,  'right_elbow':     8,
+    'left_wrist':      9,  'right_wrist':     10,
+    'left_hip':        11, 'right_hip':        12,
+    'left_knee':       13, 'right_knee':       14,
+    'left_ankle':      15, 'right_ankle':      16,
+    # COCO has no heel/foot_index — these keys simply won't appear in points,
+    # and TechniqueJudge already guards against missing keys gracefully.
+}
+
+# Confidence threshold below which a keypoint is marked not visible
+_CONF_THRESHOLD = 0.5
 
 
 class PoseExtractor:
-    """Pose Extractor using MediaPipe Pose Landmarker."""
+    """Pose Extractor using YOLOv8n-pose (Ultralytics)."""
 
-    def __init__(self, model_path: str = "models/pose_landmarker.task"):
-        self.landmarker = None
+    def __init__(self, model_path: str = "yolov8n-pose.pt"):
+        """
+        model_path: path to a local .pt file, or a YOLOv8 model name
+                    (e.g. 'yolov8n-pose.pt') which will be auto-downloaded
+                    on first use from the Ultralytics CDN.
+        """
+        self.model = None
+        self.key_points = _TRACKED
         self._initialize(model_path)
 
     def _initialize(self, model_path: str):
-        """Initialize the MediaPipe Pose Landmarker."""
-        model_path = Path(model_path)
-        if not model_path.exists():
-            raise FileNotFoundError(
-                f"Pose model not found at: {model_path}. "
-                "Download pose_landmarker.task and place it in the models/ folder."
+        try:
+            from ultralytics import YOLO
+        except ImportError:
+            raise ImportError(
+                "ultralytics is not installed. Add 'ultralytics' to requirements.txt."
             )
 
-        base_options = BaseOptions(model_asset_path=str(model_path))
-        options = vision.PoseLandmarkerOptions(
-            base_options=base_options,
-            running_mode=vision.RunningMode.VIDEO,
-            num_poses=1,
-            min_pose_detection_confidence=0.6,
-            min_pose_presence_confidence=0.6,
-            min_tracking_confidence=0.6,
-            output_segmentation_masks=False
-        )
+        self.model = YOLO(model_path)  # downloads automatically if not found locally
+        print("✅ PoseExtractor initialized successfully (YOLOv8n-pose)")
 
-        self.landmarker = vision.PoseLandmarker.create_from_options(options)
-        print("✅ PoseExtractor initialized successfully")
-
-        self.key_points = {
-            'nose': 0,
-            'left_shoulder': 11,  'right_shoulder': 12,
-            'left_elbow': 13,     'right_elbow': 14,
-            'left_wrist': 15,     'right_wrist': 16,
-            'left_hip': 23,       'right_hip': 24,
-            'left_knee': 25,      'right_knee': 26,
-            'left_ankle': 27,     'right_ankle': 28,
-            'left_heel': 29,      'right_heel': 30,
-            'left_foot_index': 31, 'right_foot_index': 32,
-        }
+    # ─── PUBLIC API ───────────────────────────────────────────────────────────
 
     def extract_from_video(
         self,
@@ -68,8 +88,8 @@ class PoseExtractor:
         Extract poses from video.
         Returns: (list_of_pose_data, fps)
         """
-        if self.landmarker is None:
-            raise RuntimeError("Landmarker not initialized. Check that pose_landmarker.task exists.")
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
 
         video_path = Path(video_path)
         if not video_path.exists():
@@ -79,16 +99,13 @@ class PoseExtractor:
         if not cap.isOpened():
             raise ValueError(f"Could not open video: {video_path}")
 
-        fps          = cap.get(cv2.CAP_PROP_FPS)
+        fps          = cap.get(cv2.CAP_PROP_FPS) or 30.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-        if fps < 1:
-            fps = 30.0
 
         print(f"📹 Processing: {video_path.name} | {total_frames} frames @ {fps:.1f} FPS | Event: {event}")
 
-        poses         = []
-        frame_num     = 0
+        poses           = []
+        frame_num       = 0
         processed_count = 0
 
         progress_bar = None
@@ -108,21 +125,16 @@ class PoseExtractor:
             if frame_num % sample_every != 0:
                 continue
 
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            mp_image  = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-
-            timestamp_ms = int((frame_num / fps) * 1000)
-
             try:
-                results = self.landmarker.detect_for_video(mp_image, timestamp_ms)
+                results = self.model(image, verbose=False)
             except Exception as e:
                 print(f"⚠️ Frame {frame_num} detection error: {e}")
                 continue
 
-            if results.pose_landmarks:
-                pose_data = self._extract_landmarks(
-                    results.pose_landmarks[0], frame_num, fps, event
-                )
+            # Pick the first detected person (highest confidence box)
+            kps = self._get_best_person_keypoints(results)
+            if kps is not None:
+                pose_data = self._extract_landmarks(kps, frame_num, fps, event)
                 poses.append(pose_data)
                 processed_count += 1
 
@@ -148,14 +160,46 @@ class PoseExtractor:
 
         return poses, float(fps)
 
+    # ─── INTERNAL ─────────────────────────────────────────────────────────────
+
+    def _get_best_person_keypoints(self, results) -> Optional[np.ndarray]:
+        """
+        Return keypoints array (17, 3) for the highest-confidence person,
+        or None if no person detected.
+        Each row: [x_norm, y_norm, confidence]
+        """
+        try:
+            result = results[0]
+            if result.keypoints is None or len(result.keypoints.data) == 0:
+                return None
+
+            # result.boxes.conf gives per-person confidence; pick argmax
+            if result.boxes is not None and len(result.boxes.conf) > 0:
+                best_idx = int(result.boxes.conf.argmax())
+            else:
+                best_idx = 0
+
+            kps_raw = result.keypoints.data[best_idx]  # shape (17, 3) tensor
+
+            # Normalize x,y to [0,1] relative to image dimensions
+            h, w = result.orig_shape
+            kps_norm = kps_raw.cpu().numpy().astype(float)
+            kps_norm[:, 0] /= w   # x → [0,1]
+            kps_norm[:, 1] /= h   # y → [0,1]
+            # column 2 is already confidence in [0,1]
+
+            return kps_norm
+        except Exception:
+            return None
+
     def _extract_landmarks(
         self,
-        landmarks,
+        kps: np.ndarray,
         frame_num: int,
         fps: float,
         event: str = "sprint"
     ) -> Dict:
-        """Extract relevant keypoints from MediaPipe landmarks."""
+        """Build a pose dict from a (17,3) COCO keypoints array."""
         data = {
             'frame': frame_num,
             'time':  round(frame_num / fps, 3),
@@ -163,22 +207,22 @@ class PoseExtractor:
             'points': {}
         }
 
-        for name, idx in self.key_points.items():
-            if idx < len(landmarks):
-                lm = landmarks[idx]
+        for name, idx in _TRACKED.items():
+            if idx < len(kps):
+                x, y, conf = kps[idx]
                 data['points'][name] = {
-                    'x':        round(float(lm.x), 4),
-                    'y':        round(float(lm.y), 4),
-                    'z':        round(float(lm.z), 4),
-                    'visible':  float(lm.visibility) > 0.5,
-                    'presence': float(lm.presence) > 0.5
+                    'x':        round(float(x),    4),
+                    'y':        round(float(y),    4),
+                    'z':        0.0,                   # YOLO 2-D; z always 0
+                    'visible':  float(conf) >= _CONF_THRESHOLD,
+                    'presence': float(conf) >= _CONF_THRESHOLD,
                 }
 
         data['angles'] = self._compute_angles(data['points'], event)
         return data
 
     def _compute_angles(self, points: Dict, event: str) -> Dict:
-        """Compute biomechanical angles relevant to the event."""
+        """Compute biomechanical angles — identical logic to old MediaPipe version."""
         angles = {}
 
         def angle_between(a, b, c) -> Optional[float]:
@@ -198,8 +242,8 @@ class PoseExtractor:
                 return None
 
         # Universal angles
-        angles['left_knee_angle']   = angle_between('left_hip',      'left_knee',   'left_ankle')
-        angles['right_knee_angle']  = angle_between('right_hip',     'right_knee',  'right_ankle')
+        angles['left_knee_angle']   = angle_between('left_hip',       'left_knee',   'left_ankle')
+        angles['right_knee_angle']  = angle_between('right_hip',      'right_knee',  'right_ankle')
         angles['left_elbow_angle']  = angle_between('left_shoulder',  'left_elbow',  'left_wrist')
         angles['right_elbow_angle'] = angle_between('right_shoulder', 'right_elbow', 'right_wrist')
         angles['left_hip_angle']    = angle_between('left_shoulder',  'left_hip',    'left_knee')
@@ -209,17 +253,18 @@ class PoseExtractor:
             angles['lead_leg_angle']   = angle_between('right_hip',  'right_knee', 'right_ankle')
             angles['trail_leg_angle']  = angle_between('left_hip',   'left_knee',  'left_ankle')
             angles['torso_lean']       = angle_between('nose',        'left_shoulder', 'left_hip')
-            angles['left_ankle_flex']  = angle_between('left_knee',  'left_ankle',  'left_foot_index')
-            angles['right_ankle_flex'] = angle_between('right_knee', 'right_ankle', 'right_foot_index')
+            # COCO has no foot_index — ankle_flex omitted (judge handles missing angles)
 
         elif event == 'sprint':
             angles['trunk_angle'] = angle_between('left_shoulder', 'left_hip', 'left_knee')
 
         elif event in ['shot_put', 'discus', 'javelin']:
-            angles['throwing_arm_angle']     = angle_between('right_shoulder', 'right_elbow', 'right_wrist')
-            angles['shoulder_hip_rotation']  = angle_between('left_shoulder',  'right_shoulder', 'right_hip')
+            angles['throwing_arm_angle']    = angle_between('right_shoulder', 'right_elbow', 'right_wrist')
+            angles['shoulder_hip_rotation'] = angle_between('left_shoulder',  'right_shoulder', 'right_hip')
 
         return {k: v for k, v in angles.items() if v is not None}
+
+    # ─── PERSISTENCE ─────────────────────────────────────────────────────────
 
     def save_poses(self, poses: List[Dict], output_path: str):
         """Save extracted poses to JSON."""
